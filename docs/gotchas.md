@@ -24,6 +24,22 @@ Add `Qt5::Network` and the debug build then fails to start with a loader error �
 because the loader fails *before* `main()`, **there is no log at all**, just a process that
 vanishes. The release path is unaffected: `windeployqt` scans the exe's imports.
 
+**The Visual Studio generator can fail before `cl.exe` starts when `PATH` and `Path` coexist.**
+MSBuild's `CL` task copies the environment into a case-insensitive .NET `Hashtable`; the
+duplicate names throw `MSB6001: Item has already been added. Key in dictionary: 'PATH'
+Key being added: 'Path'`. Raw `cl.exe` and `MSBuild -version` still work, so this looks like
+a broken toolchain and is not one. Diagnose in four rungs: raw compiler, MSBuild version,
+minimal CMake with the VS generator, then minimal CMake with Ninja. Use Ninja when only the
+VS-generator rung fails; Ninja does not use MSBuild.
+
+**On Windows, `QSettings::NativeFormat` is the registry, not a settings file.**
+`QSettings().fileName()` returns `\HKEY_CURRENT_USER\Software\<org>\<app>`. Treating that
+as a filesystem path resolves the leading backslash at the current drive root, so `mkpath`
+creates `C:\HKEY_CURRENT_USER\Software\...`. It passes where the drive root is writable and
+fails on a locked-down machine; `demo/main.cpp` hid it by selecting `IniFormat`. Test the
+format semantically: use the settings directory only for `IniFormat`, otherwise use
+`QStandardPaths::AppDataLocation`.
+
 **`QTabBar::tabSizeHint()` measures with the widget's font, not the sub-control's.**
 Styling `QTabBar::tab { font-weight: 600 }` in QSS makes the painted text wider than the
 rect the widget reserved, and characters get clipped. Put the weight on `QTabBar` itself.
@@ -87,6 +103,13 @@ The file on disk is the one that gets executed.
 
 ## Windows behaviour
 
+**Deploy Qt beside test executables; do not make tests depend on `PATH`.**
+A freshly built executable without its Qt DLLs exits `0xc0000135`
+(`STATUS_DLL_NOT_FOUND`), which `ctest` reports as an ordinary failure before `main()`.
+Prepending Qt's `bin` proved unreliable: one environment reached some launches but not
+others, plausibly because both `PATH` and `Path` existed. Run `windeployqt --debug` on each
+test executable instead; Debug builds need `Qt5Cored.dll`, not `Qt5Core.dll`.
+
 **One instance, or none.**
 Without a guard, a user who opens the app from a desktop icon — not realising it already
 auto-started at logon — creates a second copy. Where a resource allows only one client
@@ -123,3 +146,9 @@ red output.
 A delete button was written and self-verified by the same author; the verification
 happened to cover only the read paths, and the button shipped reporting success while
 doing nothing.
+
+**PowerShell 5.1 `Tee-Object` writes captured artifacts as UTF-16LE.**
+It has no `-Encoding` parameter, so a baseline that looks normal to `Select-String` contains
+a NUL between every character to `grep`, `diff` and `git diff`. The artifact then cannot be
+diffed against the later result it exists to compare. Capture durable text with
+`Out-File -Encoding utf8` instead.

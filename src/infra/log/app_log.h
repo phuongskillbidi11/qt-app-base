@@ -11,7 +11,8 @@ void init();
 // False after a log write fails; remains false for the rest of the process.
 bool isHealthy();
 
-// Absolute path of the current log file — %APPDATA%\iSoft\ZKTecoProtocol.log
+// Beside the QSettings file when it exists, under the platform application-data
+// location otherwise, and named after the application.
 QString filePath();
 
 void info(const QString &message);
