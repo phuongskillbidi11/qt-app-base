@@ -6,6 +6,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
+#include <QStandardPaths>
+
+#include <cstdio>
 
 #ifndef APP_VERSION
 #define APP_VERSION "0.0.0-dev"
@@ -14,6 +17,7 @@
 namespace {
 
 bool g_initialized = false;
+bool g_writeFailed = false;
 
 void writeLine(const QString &level, const QString &message) {
     if (!g_initialized) {
@@ -25,6 +29,13 @@ void writeLine(const QString &level, const QString &message) {
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        if (!g_writeFailed) {
+            g_writeFailed = true;
+            const QByteArray nativePath = QDir::toNativeSeparators(path).toLocal8Bit();
+            const QByteArray errorText = file.errorString().toLocal8Bit();
+            std::fprintf(stderr, "AppLog: failed to open %s: %s\n",
+                         nativePath.constData(), errorText.constData());
+        }
         return;
     }
 
@@ -58,13 +69,18 @@ void init() {
         .arg(QCoreApplication::applicationPid()));
 }
 
+bool isHealthy() {
+    return !g_writeFailed;
+}
+
 QString filePath() {
-    // Beside the INI, whatever QSettings decided that is on this platform, and named
-    // after the application rather than hardcoded — the base must not know the app.
-    const QFileInfo settingsFile(QSettings().fileName());
+    const QSettings settings;
+    const QString directory = settings.format() == QSettings::IniFormat
+        ? QFileInfo(settings.fileName()).dir().absolutePath()
+        : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString name = QCoreApplication::applicationName().isEmpty()
         ? QStringLiteral("app") : QCoreApplication::applicationName();
-    return settingsFile.dir().filePath(name + ".log");
+    return QDir(directory).filePath(name + ".log");
 }
 
 void info(const QString &message) {

@@ -8,6 +8,9 @@ namespace AppLog {
 // Safe to call once from main() before anything else logs.
 void init();
 
+// False after a log write fails; remains false for the rest of the process.
+bool isHealthy();
+
 // Absolute path of the current log file — %APPDATA%\iSoft\ZKTecoProtocol.log
 QString filePath();
 
