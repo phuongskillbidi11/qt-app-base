@@ -1,0 +1,83 @@
+# TEMPLATE — copy to your application's .github/workflows/release.yml
+#
+# The base has no releases of its own, so this lives here as a template rather than an
+# active workflow. Replace every <PLACEHOLDER>.
+#
+# Two things below are not style choices; both were learned by having a release fail:
+#   * windeployqt.exe is called BY NAME, not from a hand-built path. install-qt-action
+#     puts Qt's bin\ on PATH; Qt5_Dir points at the CMake package config directory, not
+#     the Qt root, and building a path from it fails.
+#   * ISCC.exe is DISCOVERED, not hardcoded. The Inno Setup major version is not pinned
+#     by choco, and hardcoding "Inno Setup 6" broke a release when 7 was installed.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive     # the base is a submodule
+
+      - name: Install Qt 5.15.2 (msvc2019, win32)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "5.15.2"
+          arch: "win32_msvc2019"
+          host: "windows"
+          target: "desktop"
+          cache: true
+
+      - name: Set up MSVC (x86) dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Configure (Ninja, Release)
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAPP_VERSION="$version"
+
+      - name: Build
+        run: cmake --build build --target <APP_TARGET>
+
+      # Every release runs the tests. A tag is the last moment anything is cheap to fix.
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run windeployqt
+        shell: pwsh
+        run: |
+          windeployqt.exe --release --compiler-runtime build\<APP_TARGET>.exe
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files*\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          & $iscc.FullName "/DMyAppVersion=$version" "/DMyDeployDir=..\build" packaging\<APP_NAME>.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      # The asset name must match APP_INSTALLER_ASSET in the app's CMakeLists, or the
+      # updater will download the release and find no installer in it.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: <APP_NAME>Setup.exe
+          generate_release_notes: true

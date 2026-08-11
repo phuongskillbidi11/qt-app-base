@@ -1,0 +1,273 @@
+/* ZKTecoProtocol — theme toi */
+
+QWidget {
+    background: #171C22;
+    color: #E7EBEA;
+    font-family: "Segoe UI";
+    font-size: 9pt;
+}
+
+QMainWindow, QDialog { background: #171C22; }
+
+QMenuBar { background: #171C22; border-bottom: 1px solid #262D35; }
+QMenuBar::item { padding: 5px 10px; background: transparent; border-radius: 4px; }
+QMenuBar::item:selected { background: #232A32; }
+QMenu { background: #1B2129; border: 1px solid #2C333B; padding: 4px; }
+QMenu::item { padding: 6px 26px 6px 22px; border-radius: 4px; }
+QMenu::item:selected { background: #16302E; color: #23BFA8; }
+QMenu::separator { height: 1px; background: #262D35; margin: 4px 8px; }
+
+QGroupBox {
+    background: #1B2129;
+    border: 1px solid #2C333B;
+    border-radius: 8px;
+    margin-top: 10px;
+    padding: 14px 12px 12px 12px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin; left: 12px; padding: 0 5px;
+    color: #78818B; font-weight: 600;
+}
+
+QLineEdit, QSpinBox, QComboBox, QDateTimeEdit, QPlainTextEdit, QTextEdit {
+    background: #12171C;
+    border: 1px solid #333B44;
+    border-radius: 6px;
+    padding: 4px 8px;
+    min-height: 22px;
+    color: #E7EBEA;
+    selection-background-color: #23BFA8;
+    selection-color: #0C1418;
+}
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDateTimeEdit:focus {
+    border: 1px solid #23BFA8;
+}
+QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {
+    background: #1B2129; color: #5D666F; border-color: #262D35;
+}
+QLineEdit[readOnly="true"] {
+    background: #12171C; color: #AEB6BE;
+    font-family: "Consolas"; border-color: #262D35;
+}
+
+QComboBox::drop-down { width: 20px; border: none; }
+QComboBox QAbstractItemView {
+    background: #1B2129; border: 1px solid #2C333B; color: #E7EBEA;
+    selection-background-color: #16302E; selection-color: #23BFA8; outline: none;
+}
+QSpinBox::up-button, QSpinBox::down-button { width: 16px; border-left: 1px solid #262D35; }
+
+QPushButton {
+    background: #232A32;
+    border: 1px solid #333B44;
+    border-radius: 6px;
+    padding: 5px 14px;
+    min-height: 22px;
+    min-width: 76px;
+    color: #E7EBEA;
+}
+QPushButton:hover  { background: #2A323B; border-color: #434C56; }
+QPushButton:pressed{ background: #1D242B; }
+QPushButton:disabled { background: #1B2129; color: #5D666F; border-color: #262D35; }
+
+QPushButton[accent="true"] {
+    background: #23BFA8; border-color: #23BFA8; color: #0C1418; font-weight: 600;
+}
+QPushButton[accent="true"]:hover   { background: #2FD0B8; }
+QPushButton[accent="true"]:pressed { background: #1CA692; }
+QPushButton[accent="true"]:disabled{ background: #23413D; border-color: #23413D; color: #5D8B83; }
+
+QPushButton[danger="true"] {
+    background: #241A1C; border-color: #4E3033; color: #E08A85;
+}
+QPushButton[danger="true"]:hover { background: #2C1F21; border-color: #603B3E; }
+
+QPushButton[flat="true"] { background: transparent; border-color: transparent; min-width: 0; }
+QPushButton[flat="true"]:hover { background: #16302E; color: #23BFA8; }
+
+QTabWidget::pane {
+    border: 1px solid #2C333B; border-radius: 8px; background: #171C22; top: -1px;
+}
+QTabBar { background: transparent; font-weight: 600; }
+/* Inset so the first tab is not flush against the pane edge, which was clipping the
+   leading character of "Device Param". */
+QTabWidget::tab-bar { left: 8px; }
+QTabBar::tab {
+    background: transparent; color: #78818B;
+    padding: 8px 20px; margin-right: 2px;
+    border: none; border-bottom: 2px solid transparent;
+}
+QTabBar::tab:hover { color: #E7EBEA; }
+QTabBar::tab:selected { color: #F2F5F4; border-bottom: 2px solid #23BFA8; }
+
+QHeaderView::section {
+    background: #12171C; color: #78818B;
+    padding: 7px 9px; border: none;
+    border-right: 1px solid #1F252C; border-bottom: 1px solid #262D35;
+    font-weight: 600;
+}
+QHeaderView::section:last { border-right: none; }
+QTableView, QTreeView, QListView {
+    background: #171C22;
+    alternate-background-color: #1A2027;
+    border: 1px solid #262D35;
+    border-radius: 6px;
+    gridline-color: #21272E;
+    color: #D6DBE0;
+    selection-background-color: #16302E;
+    selection-color: #A6EFE1;
+    outline: none;
+}
+QTableView::item { padding: 4px 8px; border-bottom: 1px solid #21272E; }
+QTableView::item:selected { background: #16302E; color: #A6EFE1; }
+QTableCornerButton::section { background: #12171C; border: none; }
+
+QScrollBar:vertical { background: transparent; width: 11px; }
+QScrollBar::handle:vertical { background: #3A424B; border-radius: 5px; min-height: 28px; }
+QScrollBar::handle:vertical:hover { background: #4A535E; }
+QScrollBar:horizontal { background: transparent; height: 11px; }
+QScrollBar::handle:horizontal { background: #3A424B; border-radius: 5px; min-width: 28px; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+QProgressBar {
+    background: #2C333B; border: none; border-radius: 3px;
+    height: 6px; text-align: center; color: transparent;
+}
+QProgressBar::chunk { background: #23BFA8; border-radius: 3px; }
+
+QStatusBar { background: #12171C; border-top: 1px solid #262D35; color: #78818B; }
+QStatusBar::item { border: none; }
+QStatusBar QLabel { color: #78818B; padding: 0 6px; }
+
+QCheckBox, QRadioButton {
+    spacing: 6px;
+    background: transparent;
+    padding: 0;
+    border: none;
+}
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 14px; height: 14px;
+    margin: 0;
+}
+QCheckBox::indicator { border: 1px solid #4A535E; border-radius: 3px; background: #12171C; }
+QCheckBox::indicator:hover { border-color: #23BFA8; }
+QCheckBox::indicator:checked { background: #23BFA8; border-color: #23BFA8; }
+QRadioButton::indicator { border: 1px solid #4A535E; border-radius: 7px; background: #12171C; }
+QRadioButton::indicator:hover { border-color: #23BFA8; }
+QRadioButton::indicator:checked {
+    border: 1px solid #23BFA8;
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                fx:0.5, fy:0.5,
+                stop:0 #23BFA8, stop:0.42 #23BFA8,
+                stop:0.46 #12171C, stop:1 #12171C);
+}
+
+QSplitter::handle { background: #262D35; }
+QToolTip { background: #F2F5F4; color: #1B2129; border: none; padding: 5px 8px; border-radius: 4px; }
+
+QLabel[hint="true"] { color: #78818B; }
+QLabel[metric="true"] { font-family: "Consolas"; font-size: 12pt; font-weight: 600; color: #F2F5F4; }
+QLabel[state="on"]  { color: #7DD39B; font-weight: 600; }
+QLabel[state="off"]  { color: #6E7379; font-weight: 600; }
+QLabel[state="warn"] { color: #E0A458; font-weight: 600; }
+
+
+/* ---------- Sua layout: container con trong suot ---------- */
+QGroupBox QWidget { background: transparent; }
+QGroupBox > QWidget { border: none; }
+QWidget#fieldWrap, QWidget#rowWrap { background: transparent; border: none; }
+
+/* nhan phu tren o nhap: chieu cao co dinh de cac cot thang hang */
+QLabel[hint="true"] {
+    min-height: 15px; max-height: 15px;
+    padding: 0; margin: 0;
+    background: transparent;
+}
+
+/* nut trong hang cong cu khong duoc keo dai */
+QPushButton[fixed="true"] { min-width: 0; }
+
+/* bang rong: chu goi y */
+QTableView { qproperty-showGrid: false; }
+
+
+/* ================= Reference mockup (ZKTeco_Qt.html) ================= */
+/* Values map 1-1 to the :root block in that file. */
+
+QLabel#legend {
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1px;
+    color: #78818B;
+}
+
+/* Protocol drawn as a segmented control: the radio indicator is hidden and the
+   label itself becomes the pill, so isTcp() and the signals stay untouched. */
+QWidget#protocolGroup {
+    background: #12171C;
+    border: 1px solid #2C333B;
+    border-radius: 8px;
+}
+QWidget#protocolGroup QRadioButton {
+    padding: 6px 18px;
+    border-radius: 6px;
+    font-size: 13px; font-weight: 500;
+    color: #78818B;
+    background: transparent;
+    spacing: 0;
+}
+QWidget#protocolGroup QRadioButton::indicator { width: 0; height: 0; margin: 0; border: none; }
+QWidget#protocolGroup QRadioButton:hover { color: #E7EBEA; }
+QWidget#protocolGroup QRadioButton:checked {
+    background: #2A333C;
+    color: #F2F5F4;
+    font-weight: 600;
+}
+
+QWidget#cmdString {
+    background: #12171C;
+    border: 1px solid #262D35;
+    border-radius: 7px;
+}
+QWidget#cmdString QLineEdit {
+    background: transparent; border: none; padding: 0;
+    font-family: Consolas, monospace; font-size: 12px;
+    color: #AEB6BE;
+}
+
+QWidget#statePane { border-left: 1px solid #262D35; }
+QLabel#stateMeta {
+    font-family: Consolas, monospace; font-size: 11px;
+    color: #78818B;
+}
+
+/* Buttons in the connection panel follow --h-button */
+QWidget#statePane QPushButton { min-height: 36px; border-radius: 8px; }
+
+/* Table: uppercase spaced header, monospace body, accent-tinted selection */
+QHeaderView::section {
+    font-size: 11px; font-weight: 600; letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #78818B;
+    background: #12171C;
+    border: none; border-bottom: 1px solid #262D35;
+    padding: 10px 12px;
+}
+QTableWidget, QTableView {
+    background: #171C22;
+    alternate-background-color: #1A2027;
+    color: #D6DBE0;
+    gridline-color: #21272E;
+    border: none;
+    selection-background-color: #16302E;
+    selection-color: #A6EFE1;
+}
+
+/* Toolbar bits used by the Transaction tab */
+QLabel#countValue {
+    font-family: Consolas, monospace; font-size: 16px; font-weight: 600;
+    color: #F2F5F4;
+}
+QLabel#countCaption { font-size: 12px; color: #78818B; }
+QFrame#vsep { background: #2C333B; max-width: 1px; border: none; }

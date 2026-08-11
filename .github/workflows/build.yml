@@ -1,0 +1,74 @@
+name: Build validation
+
+on:
+  push:
+  pull_request:
+
+# Both platforms build, on every push. The Linux job is not aspirational — it is the only
+# thing that keeps src/infra/platform/platform_unix.cpp compiling. A platform boundary
+# that is never built on the other side stops being a boundary and quietly becomes a
+# rewrite waiting to happen.
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows (Win32)
+            os: windows-latest
+            qt_arch: win32_msvc2019
+            qt_host: windows
+          - name: Linux (x64)
+            os: ubuntu-latest
+            qt_arch: ""
+            qt_host: linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt 5.15.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "5.15.2"
+          arch: ${{ matrix.qt_arch }}
+          host: ${{ matrix.qt_host }}
+          target: "desktop"
+          cache: true
+
+      - name: Set up MSVC (x86)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-xinerama0 libxcb-shape0
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_DEMO=ON
+
+      - name: Build
+        run: cmake --build build
+
+      # No list of test executables anywhere. CTest knows what exists because
+      # add_feature_module() registered it, so adding a module cannot leave its tests
+      # silently unrun — which is exactly what happened in the project this base came
+      # from, where a hand-maintained list in CI went one entry out of date and a whole
+      # phase's tests were built but never executed while CI stayed green.
+      - name: Run tests
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      # The Qt GUI tests need a display; xvfb provides one. Kept separate from the
+      # Windows step so a failure names the platform it happened on.
+      - name: Run tests (headless)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ctest --test-dir build --output-on-failure

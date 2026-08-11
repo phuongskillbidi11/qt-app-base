@@ -1,0 +1,18 @@
+#pragma once
+
+#include <QString>
+
+namespace AppLog {
+
+// Resolves the log path, rotates if oversized (T2), and writes the first line.
+// Safe to call once from main() before anything else logs.
+void init();
+
+// Absolute path of the current log file — %APPDATA%\iSoft\ZKTecoProtocol.log
+QString filePath();
+
+void info(const QString &message);
+void warn(const QString &message);
+void error(const QString &message);
+
+}  // namespace AppLog

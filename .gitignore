@@ -1,0 +1,17 @@
+# Build output / IDE cache
+build/
+build-*/
+out/
+.vs/
+*Setup.exe
+
+# Agent / planner tooling — used on the machine, never shipped
+.claude/
+.plans/
+.planner-executor/
+scripts/
+skills/
+CLAUDE.md
+AGENTS.md
+CODEBASE_MAP.md
+.codebase_map.json
