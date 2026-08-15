@@ -34,6 +34,14 @@ MqSettingsDialog::MqSettingsDialog(MqSettings *settings, QWidget *parent)
       resultLabel_(new QLabel(this)) {
     setWindowTitle(utf16(u"C\u00E0i \u0111\u1EB7t k\u1EBFt n\u1ED1i"));
 
+    // Names for UI-automation tooling (FlaUI, UI Automation) to find these controls by.
+    hostEdit_->setObjectName("hostEdit");
+    portEdit_->setObjectName("portEdit");
+    vhostEdit_->setObjectName("vhostEdit");
+    userEdit_->setObjectName("userEdit");
+    passwordEdit_->setObjectName("passwordEdit");
+    resultLabel_->setObjectName("resultLabel");
+
     hostEdit_->setText(settings_->host());
     portEdit_->setText(QString::number(settings_->port()));
     vhostEdit_->setText(settings_->vhost());
@@ -49,7 +57,9 @@ MqSettingsDialog::MqSettingsDialog(MqSettings *settings, QWidget *parent)
     form->addRow(utf16(u"Password"), passwordEdit_);
 
     auto *saveButton = new QPushButton(utf16(u"L\u01B0u"), this);
+    saveButton->setObjectName("saveButton");
     auto *testButton = new QPushButton(utf16(u"Th\u1EED k\u1EBFt n\u1ED1i"), this);
+    testButton->setObjectName("testButton");
     auto *buttonRow = new QHBoxLayout;
     buttonRow->addWidget(saveButton);
     buttonRow->addWidget(testButton);

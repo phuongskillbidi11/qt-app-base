@@ -59,6 +59,20 @@ MqTab::MqTab(MqConnection *connection,
     setWindowTitle("Qt MQ Lab");
     resize(920, 580);
 
+    // Names for UI-automation tooling (FlaUI, UI Automation) to find these controls by --
+    // Qt Widgets exposes objectName as the accessible name over MSAA/UIA, and with none set
+    // every control shows up unlabelled, indistinguishable from the next.
+    connectionLabel_->setObjectName("connectionLabel");
+    bodyEdit_->setObjectName("bodyEdit");
+    sendButton_->setObjectName("sendButton");
+    table_->setObjectName("messageTable");
+    pauseCheck_->setObjectName("pauseCheck");
+    sentValue_->setObjectName("sentValue");
+    receivedValue_->setObjectName("receivedValue");
+    waitingValue_->setObjectName("waitingValue");
+    rejectedValue_->setObjectName("rejectedValue");
+    returnedValue_->setObjectName("returnedValue");
+
     auto *mainLayout = new QVBoxLayout(this);
 
     auto *connectionRow = new QHBoxLayout;
@@ -67,6 +81,7 @@ MqTab::MqTab(MqConnection *connection,
     connectionRow->addWidget(new QLabel(QString("%1:%2  vhost %3").arg(host).arg(port).arg(vhost), this));
     connectionRow->addStretch();
     auto *settingsButton = new QPushButton(utf16(u"C\u00E0i \u0111\u1EB7t"), this);
+    settingsButton->setObjectName("settingsButton");
     UiStyle::makeBarButton(settingsButton);
     connectionRow->addWidget(settingsButton);
     mainLayout->addLayout(connectionRow);
