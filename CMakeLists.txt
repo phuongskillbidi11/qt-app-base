@@ -22,6 +22,7 @@ set(CMAKE_AUTORCC ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(AddFeatureModule)
+include(UseBaseFeature)
 enable_testing()
 
 find_package(Qt5 5.15 REQUIRED COMPONENTS Core Network Widgets)

@@ -108,6 +108,21 @@ shipped a whole phase whose tests were built but never run while CI stayed green
 
 ---
 
+## `src/features/mq/` — a feature the base ships, not an app's own
+
+AMQP/RabbitMQ client: `mq_connection` (socket + `AMQP::ConnectionHandler`), `mq_service`
+(channel, publish/consume/ack/reject, `AMQP::mandatory` + `recall()` so an unroutable message
+is reported instead of silently dropped), `mq_codec` (the envelope, pure), `mq_settings`
+(broker host/port/vhost/credentials, through `AppSettings`), `mq_tab` and
+`mq_settings_dialog` (the widgets). No self-declared topology — the app fails loudly against a
+broker that hasn't had `definitions.json` applied to it, rather than creating what it expects.
+
+`qt-mq-lab` is this feature's reference consumer: `use_base_feature(mq UI LINK amqpcpp)`, its
+own submodule supplying the `amqpcpp` target. The base does not vendor AMQP-CPP itself — see
+"Adding a feature the base ships" below for why.
+
+---
+
 ## Adding a feature
 
 A feature is a **directory**, and it splits three ways:
@@ -124,3 +139,29 @@ One line in `CMakeLists.txt`: `add_feature_module(<name> UI)`.
 The self-test is discovered and registered automatically. **If a feature has no testable
 part, the pure logic has not been separated from the I/O yet** — that is a design problem,
 not a missing file.
+
+### Adding a feature the base ships
+
+`add_feature_module()` only ever finds a feature living in the **consuming app's own**
+`src/features/` — it resolves `CMAKE_SOURCE_DIR`, which CMake fixes to the outermost project's
+source directory for the whole configure run, never the base's, no matter how deeply
+`add_subdirectory` nests it. A feature the base itself ships (like `mq`) needs
+`use_base_feature(<name> [UI] [LINK <targets>...])` instead
+(`cmake/UseBaseFeature.cmake`), which resolves `qt-app-base_SOURCE_DIR` — a variable CMake
+sets automatically from the base's own `project(qt-app-base ...)` call, visible from the
+consumer's scope the moment `add_subdirectory` returns.
+
+The base ships the feature's **source only**. A vendored dependency it needs (AMQP-CPP for
+`mq`) is *not* pulled into the base itself — each consuming app still vendors it and passes
+its target name via `LINK`, exactly as it would for its own `add_feature_module`-based feature.
+`appinfra` links `Qt5::Core` and `Qt5::Network` only, deliberately; folding a protocol library
+into the base is the first crack in that.
+
+**A submodule pin is not a live reference.** If your app consumes the base through a git
+submodule (as `qt-mq-lab` does, at `external/base`), editing a *different* local checkout of
+`qt-app-base` changes nothing about what your app builds — the submodule is frozen at whatever
+commit it was last pointed at. A change to the base only reaches a consumer once it is pushed
+and the consumer's submodule pointer is explicitly updated (`git -C external/base fetch && git
+-C external/base checkout <commit>`, then commit that pointer change in the consumer's own
+repo). Confusing the two checkouts costs a full "why is my macro unknown" debugging cycle —
+it already has, once.

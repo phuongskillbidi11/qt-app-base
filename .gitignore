@@ -4,6 +4,10 @@ build-*/
 out/
 .vs/
 *Setup.exe
+# Visual Studio auto-generates this as x64 with no toolset pin the moment the folder is
+# opened directly. It cannot build a consumer that needs x86/MSVC 14.44 (see qt-mq-lab's own
+# CMakePresets.json for why), and it is per-machine, not project, state.
+CMakeSettings.json
 
 # Agent / planner tooling — used on the machine, never shipped
 .claude/
