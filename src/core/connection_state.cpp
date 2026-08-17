@@ -36,10 +36,13 @@ ConnectionState::ConnectionState(QObject *parent) : QObject(parent) {
 }
 
 void ConnectionState::setHandlers(ConnectFn connectFn, ProbeFn probeFn,
-                                  DisconnectFn disconnectFn) {
+                                  DisconnectFn disconnectFn, bool asyncResult) {
     m_connect = std::move(connectFn);
     m_probe = std::move(probeFn);
     m_disconnect = std::move(disconnectFn);
+    m_asyncResult = asyncResult;
+    m_awaitingAsyncResult = false;
+    m_asyncAutoRetryOnFailure = false;
 }
 
 bool ConnectionState::connectNow() {
@@ -47,16 +50,44 @@ bool ConnectionState::connectNow() {
     if (!m_connect) {
         return false;
     }
-    const bool ok = m_connect();
-    setConnected(ok);
-    if (ok && m_heartbeatIntervalMs > 0) {
+    const bool started = m_connect();
+    if (m_asyncResult) {
+        m_awaitingAsyncResult = started;
+        m_asyncAutoRetryOnFailure = false;
+        if (!started) {
+            setConnected(false);
+        }
+        return started;
+    }
+    setConnected(started);
+    if (started && m_heartbeatIntervalMs > 0) {
         m_heartbeatTimer.start(m_heartbeatIntervalMs);
     }
-    return ok;
+    return started;
 }
 
 void ConnectionState::beginAutoConnect() {
-    if (connectNow()) {
+    stopReconnecting();
+    if (!m_connect) {
+        startReconnecting();
+        return;
+    }
+    const bool started = m_connect();
+    if (m_asyncResult) {
+        m_awaitingAsyncResult = started;
+        m_asyncAutoRetryOnFailure = true;
+        if (started) {
+            return;
+        }
+        setConnected(false);
+        startReconnecting();
+        return;
+    }
+    setConnected(started);
+    if (started) {
+        if (m_heartbeatIntervalMs > 0) {
+            m_heartbeatTimer.start(m_heartbeatIntervalMs);
+        }
         return;
     }
     startReconnecting();
@@ -65,6 +96,8 @@ void ConnectionState::beginAutoConnect() {
 void ConnectionState::disconnectNow() {
     m_heartbeatTimer.stop();
     stopReconnecting();
+    m_awaitingAsyncResult = false;
+    m_asyncAutoRetryOnFailure = false;
     if (m_disconnect) {
         m_disconnect();
     }
@@ -101,7 +134,33 @@ void ConnectionState::onReconnectTick() {
     if (m_disconnect) {
         m_disconnect();
     }
-    if (m_connect && m_connect()) {
+    if (m_connect) {
+        const bool started = m_connect();
+        if (m_asyncResult) {
+            m_awaitingAsyncResult = started;
+            m_asyncAutoRetryOnFailure = true;
+            if (started) {
+                return;
+            }
+        } else if (started) {
+            stopReconnecting();
+            setConnected(true);
+            if (m_heartbeatIntervalMs > 0) {
+                m_heartbeatTimer.start(m_heartbeatIntervalMs);
+            }
+            return;
+        }
+    }
+    ++m_reconnectFailures;
+    m_reconnectTimer.start(reconnectDelayMs(m_reconnectFailures));
+}
+
+void ConnectionState::reportPendingConnectResult(bool succeeded) {
+    if (!m_asyncResult || !m_awaitingAsyncResult) {
+        return;
+    }
+    m_awaitingAsyncResult = false;
+    if (succeeded) {
         stopReconnecting();
         setConnected(true);
         if (m_heartbeatIntervalMs > 0) {
@@ -109,8 +168,16 @@ void ConnectionState::onReconnectTick() {
         }
         return;
     }
-    ++m_reconnectFailures;
-    m_reconnectTimer.start(reconnectDelayMs(m_reconnectFailures));
+    setConnected(false);
+    if (!m_asyncAutoRetryOnFailure) {
+        return;
+    }
+    if (m_reconnecting) {
+        ++m_reconnectFailures;
+        m_reconnectTimer.start(reconnectDelayMs(m_reconnectFailures));
+    } else {
+        startReconnecting();
+    }
 }
 
 void ConnectionState::setConnected(bool connected) {

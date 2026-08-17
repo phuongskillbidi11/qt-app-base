@@ -5,14 +5,14 @@
 #include <QJsonParseError>
 #include <QUuid>
 
-QByteArray MqCodec::encode(const QString &body) {
+QByteArray MqCodec::encode(const QString &type, const QJsonObject &payload) {
     const QJsonObject envelope{
         {"id", QUuid::createUuid().toString(QUuid::WithoutBraces)},
         {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"v", 1},
         {"src", "qt-mq-lab"},
-        {"type", "lab.note"},
-        {"payload", QJsonObject{{"text", body}}},
+        {"type", type},
+        {"payload", payload},
     };
     return QJsonDocument(envelope).toJson(QJsonDocument::Compact);
 }

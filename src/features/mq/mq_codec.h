@@ -21,7 +21,7 @@ struct DecodeResult {
     bool valid = false;
 };
 
-QByteArray encode(const QString &body);
+QByteArray encode(const QString &type, const QJsonObject &payload);
 DecodeResult decode(const QByteArray &data);
 
 }  // namespace MqCodec

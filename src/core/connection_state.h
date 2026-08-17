@@ -35,7 +35,17 @@ public:
 
     explicit ConnectionState(QObject *parent = nullptr);
 
-    void setHandlers(ConnectFn connectFn, ProbeFn probeFn, DisconnectFn disconnectFn);
+    // asyncResult: false (default) means ConnectFn's return value IS the final answer,
+    // exactly as today. true means the underlying connect is event-driven -- ConnectFn's
+    // return value only means "the attempt was launched without an immediate, synchronous
+    // error" (almost always true for a socket connect), and the real outcome arrives later
+    // via reportPendingConnectResult(). Do not pass true unless you will call that method.
+    void setHandlers(ConnectFn connectFn, ProbeFn probeFn, DisconnectFn disconnectFn,
+                     bool asyncResult = false);
+
+    // Reports the real outcome of an asynchronously launched connect attempt. Stray or
+    // late reports are ignored, including reports that arrive after disconnectNow().
+    void reportPendingConnectResult(bool succeeded);
 
     // A user-initiated attempt. Always cancels any reconnect loop first, so the user's
     // action takes effect immediately rather than queueing behind a timer.
@@ -79,6 +89,9 @@ private:
 
     bool m_connected = false;
     bool m_reconnecting = false;
+    bool m_asyncResult = false;
+    bool m_awaitingAsyncResult = false;
+    bool m_asyncAutoRetryOnFailure = false;
     int m_reconnectFailures = 0;
     int m_heartbeatIntervalMs = 5000;
     QTimer m_heartbeatTimer;

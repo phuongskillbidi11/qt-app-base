@@ -6,6 +6,7 @@ constexpr char kPortKey[] = "mq/port";
 constexpr char kVhostKey[] = "mq/vhost";
 constexpr char kUserKey[] = "mq/user";
 constexpr char kPasswordKey[] = "mq/password";
+constexpr char kDbSizeWarningThresholdBytesKey[] = "mq/db_size_warning_threshold_bytes";
 }
 
 QString MqSettings::host() const {
@@ -32,6 +33,10 @@ QString MqSettings::password() const {
     return value(kPasswordKey, QString()).toString();
 }
 
+qint64 MqSettings::dbSizeWarningThresholdBytes() const {
+    return value(kDbSizeWarningThresholdBytesKey, 500LL * 1024 * 1024).toLongLong();
+}
+
 void MqSettings::setHost(const QString &newValue) {
     setValue(kHostKey, newValue);
 }
@@ -53,6 +58,10 @@ void MqSettings::setPassword(const QString &newValue) {
         return;
     }
     setValue(kPasswordKey, newValue);
+}
+
+void MqSettings::setDbSizeWarningThresholdBytes(qint64 newValue) {
+    setValue(kDbSizeWarningThresholdBytesKey, newValue);
 }
 
 bool MqSettings::isLocalBroker() const {

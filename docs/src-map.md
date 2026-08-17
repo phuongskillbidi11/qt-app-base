@@ -64,6 +64,10 @@ A settings file is trivially copied off a shared machine.
 *Why:* where a resource allows only one client, two instances fight forever and the user
 sees a permanent "Reconnecting…".
 
+### `src/infra/db/`
+Vendored SQLite plus the `Database`/`Statement` wrapper; all database access goes through one
+`Worker`, so the wrapper needs no mutex.
+
 ### `update/`
 GitHub Releases check → SHA-256 verified download → install. `curl_client`,
 `update_checker`, `update_installer`.
@@ -116,6 +120,10 @@ is reported instead of silently dropped), `mq_codec` (the envelope, pure), `mq_s
 (broker host/port/vhost/credentials, through `AppSettings`), `mq_tab` and
 `mq_settings_dialog` (the widgets). No self-declared topology — the app fails loudly against a
 broker that hasn't had `definitions.json` applied to it, rather than creating what it expects.
+
+`mq_store` durably stores each opaque payload with its envelope, direction and acknowledgement
+metadata plus presenter-supplied `display_title`/`search_text`; it never reads `payload`, and its
+query schema lives entirely in those derived fields plus envelope columns.
 
 `qt-mq-lab` is this feature's reference consumer: `use_base_feature(mq UI LINK amqpcpp)`, its
 own submodule supplying the `amqpcpp` target. The base does not vendor AMQP-CPP itself — see

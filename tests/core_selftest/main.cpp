@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QMetaObject>
 #include <QThread>
 #include <QTimer>
 
@@ -67,6 +68,86 @@ int main(int argc, char *argv[]) {
     state.disconnectNow();
     check(!state.isReconnecting(),
           "disconnect is the thing that ends a reconnect loop");
+
+    // --- asynchronous connection results ----------------------------------
+    {
+        ConnectionState asyncState;
+        int asyncConnectedSignals = 0;
+        QObject::connect(&asyncState, &ConnectionState::connectionStateChanged,
+                         [&asyncConnectedSignals](bool) { ++asyncConnectedSignals; });
+        asyncState.setHandlers([]() { return true; }, []() { return true; }, []() {}, true);
+        asyncState.setHeartbeatIntervalMs(0);
+
+        const bool launched = asyncState.connectNow();
+        check(launched && !asyncState.isConnected() && asyncConnectedSignals == 0,
+              "async connectNow stays pending until its result is reported");
+        asyncState.reportPendingConnectResult(true);
+        check(asyncState.isConnected() && asyncConnectedSignals == 1,
+              "async connectNow success fires connectionStateChanged exactly once");
+    }
+
+    {
+        ConnectionState asyncState;
+        asyncState.setHandlers([]() { return true; }, []() { return true; }, []() {}, true);
+        asyncState.setHeartbeatIntervalMs(0);
+
+        const bool launched = asyncState.connectNow();
+        asyncState.reportPendingConnectResult(false);
+        check(launched && !asyncState.isConnected() && !asyncState.isReconnecting(),
+              "async connectNow failure does not start automatic retries");
+    }
+
+    {
+        ConnectionState asyncState;
+        asyncState.setHandlers([]() { return true; }, []() { return true; }, []() {}, true);
+        asyncState.setHeartbeatIntervalMs(0);
+
+        asyncState.beginAutoConnect();
+        asyncState.reportPendingConnectResult(false);
+        check(!asyncState.isConnected() && asyncState.isReconnecting(),
+              "async beginAutoConnect failure starts the reconnect loop");
+        asyncState.disconnectNow();
+    }
+
+    {
+        ConnectionState asyncState;
+        int attempts = 0;
+        bool observeArmedRetry = false;
+        qint64 armedRetryElapsedMs = -1;
+        QElapsedTimer armedRetryElapsed;
+        QEventLoop armedRetryLoop;
+        asyncState.setHandlers([&]() {
+            ++attempts;
+            if (observeArmedRetry) {
+                armedRetryElapsedMs = armedRetryElapsed.elapsed();
+                armedRetryLoop.quit();
+            }
+            return true;
+        }, []() { return true; }, []() {}, true);
+        asyncState.setHeartbeatIntervalMs(0);
+
+        asyncState.beginAutoConnect();
+        asyncState.reportPendingConnectResult(false);
+
+        bool retryTicksInvoked = true;
+        for (int i = 0; i < 3; ++i) {
+            retryTicksInvoked = retryTicksInvoked
+                && QMetaObject::invokeMethod(&asyncState, "onReconnectTick",
+                                             Qt::DirectConnection);
+            asyncState.reportPendingConnectResult(false);
+        }
+
+        observeArmedRetry = true;
+        armedRetryElapsed.start();
+        QTimer::singleShot(expected[3] + 5000, &armedRetryLoop, &QEventLoop::quit);
+        armedRetryLoop.exec();
+
+        check(retryTicksInvoked && attempts == 5
+                  && armedRetryElapsedMs >= expected[3] - 1000
+                  && armedRetryElapsedMs < expected[3] + 5000,
+              "three async retry failures arm the 15s reconnect rung");
+        asyncState.disconnectNow();
+    }
 
     // --- the worker actually runs off the calling thread --------------------
     // The whole reason this class exists is to keep blocking work away from the thread

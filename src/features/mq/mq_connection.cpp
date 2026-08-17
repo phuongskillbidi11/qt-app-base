@@ -8,6 +8,8 @@
 
 MqConnection::MqConnection(QObject *parent)
     : QObject(parent) {
+    connect(&state_, &ConnectionState::connectionStateChanged,
+            this, &MqConnection::connectionStateChanged);
     heartbeatTimer_.setSingleShot(false);
     connect(&heartbeatTimer_, &QTimer::timeout, this, [this]() {
         if (connection_) {
@@ -28,6 +30,10 @@ MqConnection::MqConnection(QObject *parent)
                 error_ = socket_.errorString();
                 ready_ = false;
                 heartbeatTimer_.stop();
+                if (connectAttemptPending_) {
+                    connectAttemptPending_ = false;
+                    state_.reportPendingConnectResult(false);
+                }
             });
 }
 
@@ -43,10 +49,25 @@ void MqConnection::connectToHost(const QString &host,
     inputBuffer_.clear();
     ready_ = false;
     error_.clear();
+    host_ = host;
+    port_ = port;
     vhost_ = vhost;
     user_ = user;
     password_ = password;
-    socket_.connectToHost(host, port);
+    state_.setHandlers(
+        [this]() {
+            error_.clear();
+            connectAttemptPending_ = true;
+            socket_.connectToHost(host_, port_);
+            return true;
+        },
+        [this]() { return socket_.state() == QAbstractSocket::ConnectedState; },
+        [this]() {
+            connectAttemptPending_ = false;
+            socket_.abort();
+        },
+        true);
+    state_.beginAutoConnect();
 }
 
 AMQP::Connection *MqConnection::connection() const {
@@ -54,7 +75,7 @@ AMQP::Connection *MqConnection::connection() const {
 }
 
 bool MqConnection::isReady() const {
-    return ready_;
+    return state_.isConnected();
 }
 
 QString MqConnection::errorString() const {
@@ -68,12 +89,18 @@ void MqConnection::onData(AMQP::Connection *, const char *buffer, size_t size) {
 void MqConnection::onReady(AMQP::Connection *) {
     ready_ = true;
     error_.clear();
+    connectAttemptPending_ = false;
+    state_.reportPendingConnectResult(true);
 }
 
 void MqConnection::onError(AMQP::Connection *, const char *message) {
     ready_ = false;
     heartbeatTimer_.stop();
     error_ = QString::fromUtf8(message);
+    if (connectAttemptPending_) {
+        connectAttemptPending_ = false;
+        state_.reportPendingConnectResult(false);
+    }
 }
 
 void MqConnection::onClosed(AMQP::Connection *) {

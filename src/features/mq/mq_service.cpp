@@ -14,23 +14,30 @@ constexpr char kQueue[] = "hsf.card.issued";
 
 MqService::MqService(MqConnection *connection, QObject *parent)
     : QObject(parent),
-      connection_(connection) {}
+      connection_(connection) {
+    connect(connection_, &MqConnection::connectionStateChanged, this,
+            [this](bool connected) {
+                if (!connected) {
+                    resetConnectionState();
+                }
+            });
+}
 
 MqService::~MqService() = default;
 
-bool MqService::publish(const QString &body) {
+bool MqService::publish(const QString &type, const QJsonObject &payload) {
     if (!ensureChannel()) {
         return false;
     }
 
-    const QByteArray payload = MqCodec::encode(body);
-    const MqCodec::DecodeResult decoded = MqCodec::decode(payload);
+    const QByteArray encoded = MqCodec::encode(type, payload);
+    const MqCodec::DecodeResult decoded = MqCodec::decode(encoded);
     if (!decoded.valid) {
         emit errorOccurred("Could not decode the newly encoded message");
         return false;
     }
 
-    AMQP::Envelope envelope(payload.constData(), static_cast<uint64_t>(payload.size()));
+    AMQP::Envelope envelope(encoded.constData(), static_cast<uint64_t>(encoded.size()));
     envelope.setDeliveryMode(2);
     if (!channel_->publish(kExchange, decoded.envelope.type.toStdString(), envelope,
                            AMQP::mandatory)) {
@@ -38,7 +45,10 @@ bool MqService::publish(const QString &body) {
         return false;
     }
 
-    emit published(decoded.envelope.id);
+    emit published(decoded.envelope.id,
+                   decoded.envelope.timestamp,
+                   decoded.envelope.type,
+                   decoded.envelope.payload);
     return true;
 }
 
@@ -133,6 +143,7 @@ void MqService::confirmInserted(quint64 deliveryTag) {
 
     committedDeliveries_.remove(deliveryTag);
     pendingDeliveries_.remove(deliveryTag);
+    emit deliveryAcked(deliveryTag);
 }
 
 void MqService::cancelConsumer() {
@@ -168,6 +179,20 @@ void MqService::rejectDelivery(quint64 deliveryTag, const QString &reason) {
     pendingDeliveries_.remove(deliveryTag);
     committedDeliveries_.remove(deliveryTag);
     emit messageRejected(reason);
+}
+
+void MqService::resetConnectionState() {
+    // The channel was built on the AMQP::Connection that MqConnection is replacing.
+    // Delivery tags are channel-scoped, so they cannot be acknowledged on the next channel.
+    // The broker requeues unacknowledged deliveries and the durable store deduplicates any
+    // envelope that was committed before the connection was lost.
+    channel_.reset();
+    consumerTag_.clear();
+    consuming_ = false;
+    consumerStarting_ = false;
+    cancelPending_ = false;
+    pendingDeliveries_.clear();
+    committedDeliveries_.clear();
 }
 
 bool MqService::ensureChannel() {

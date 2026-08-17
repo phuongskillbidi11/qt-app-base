@@ -21,7 +21,7 @@ public:
     explicit MqService(MqConnection *connection, QObject *parent = nullptr);
     ~MqService() override;
 
-    bool publish(const QString &body);
+    bool publish(const QString &type, const QJsonObject &payload);
 
 public slots:
     bool startConsuming();
@@ -29,7 +29,7 @@ public slots:
     void confirmInserted(quint64 deliveryTag);
 
 signals:
-    void published(QString id);
+    void published(QString id, QDateTime timestamp, QString type, QJsonObject payload);
     void messageReceived(QString id,
                          QDateTime timestamp,
                          QString type,
@@ -40,9 +40,11 @@ signals:
     // One message was discarded. The connection and channel are unaffected.
     void messageRejected(QString reason);
     void messageReturned(QString routingKey, QString description);
+    void deliveryAcked(quint64 deliveryTag);
 
 private:
     bool ensureChannel();
+    void resetConnectionState();
     void cancelConsumer();
     void rejectDelivery(quint64 deliveryTag, const QString &reason);
 

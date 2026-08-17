@@ -1,5 +1,7 @@
 #pragma once
 
+#include "connection_state.h"
+
 #include <amqpcpp.h>
 
 #include <QByteArray>
@@ -11,6 +13,8 @@
 #include <memory>
 
 class MqConnection : public QObject, public AMQP::ConnectionHandler {
+    Q_OBJECT
+
 public:
     explicit MqConnection(QObject *parent = nullptr);
     ~MqConnection() override;
@@ -25,6 +29,9 @@ public:
     bool isReady() const;
     QString errorString() const;
 
+signals:
+    void connectionStateChanged(bool connected);
+
 protected:
     void onData(AMQP::Connection *connection, const char *buffer, size_t size) override;
     void onReady(AMQP::Connection *connection) override;
@@ -37,11 +44,15 @@ private:
 
     QTcpSocket socket_;
     QTimer heartbeatTimer_;
+    ConnectionState state_;
     QByteArray inputBuffer_;
     std::unique_ptr<AMQP::Connection> connection_;
+    QString host_;
     QString vhost_;
     QString user_;
     QString password_;
     QString error_;
+    quint16 port_ = 0;
     bool ready_ = false;
+    bool connectAttemptPending_ = false;
 };

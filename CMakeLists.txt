@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(qt-app-base LANGUAGES CXX VERSION 0.1.0)
+project(qt-app-base LANGUAGES C CXX VERSION 0.1.0)
 
 # ---------------------------------------------------------------------------
 # This file builds the BASE only: three static libraries plus a demo application
@@ -54,6 +54,12 @@ endif()
 add_library(appinfra STATIC
     src/infra/log/app_log.cpp
     src/infra/log/app_log.h
+    src/infra/db/database.cpp
+    src/infra/db/database.h
+    src/infra/db/statement.h
+    src/infra/db/sqlite3.c
+    src/infra/db/sqlite3.h
+    src/infra/db/sqlite3ext.h
     src/infra/settings/app_settings.cpp
     src/infra/settings/app_settings.h
     src/infra/singleinstance/single_instance.cpp
@@ -66,7 +72,7 @@ add_library(appinfra STATIC
     src/infra/update/update_installer.h
     ${INFRA_PLATFORM_SOURCES})
 target_include_directories(appinfra PUBLIC
-    src/infra/log src/infra/settings src/infra/singleinstance
+    src/infra/log src/infra/db src/infra/settings src/infra/singleinstance
     src/infra/update src/infra/platform)
 target_link_libraries(appinfra PUBLIC Qt5::Core Qt5::Network appcore)
 target_compile_definitions(appinfra PUBLIC APP_VERSION="${APP_VERSION}")
