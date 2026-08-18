@@ -6,6 +6,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QObject>
+#include <QPointer>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QStyle>
@@ -38,11 +39,23 @@ protected:
 
 private:
     void sync() {
-        m_hint->setGeometry(m_table->viewport()->rect());
+        // m_hint is a child of the viewport, not of this relay (see the constructor's
+        // QObject(table) parenting) -- Qt can tear the viewport down, destroying m_hint,
+        // before this relay stops reacting to the table's model signals during the
+        // table's own destruction. A dangling QLabel* here was a real, reproducible
+        // crash on every normal app close (0xC0000005 inside Qt, traced via a minidump).
+        if (m_hint.isNull()) {
+            return;
+        }
+        QWidget *viewport = m_table->viewport();
+        if (viewport == nullptr) {
+            return;
+        }
+        m_hint->setGeometry(viewport->rect());
         m_hint->setVisible(m_table->rowCount() == 0);
     }
 
-    QLabel *m_hint;
+    QPointer<QLabel> m_hint;
     QTableWidget *m_table;
 };
 
