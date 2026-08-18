@@ -106,10 +106,12 @@ add_executable(ui_selftest tests/ui_selftest/main.cpp)
 target_link_libraries(ui_selftest PRIVATE appui)
 add_test(NAME ui COMMAND ui_selftest)
 
+add_feature_module(modbus)
+
 # --- demo application ------------------------------------------------------
 # Not an example to read — a gate. If this builds, runs, styles itself, guards against a
 # second instance and writes a log, the base is intact.
 if(BUILD_DEMO)
     add_executable(basedemo WIN32 demo/main.cpp demo/demowindow.cpp demo/demowindow.h)
-    target_link_libraries(basedemo PRIVATE appui appinfra appcore)
+    target_link_libraries(basedemo PRIVATE appui appinfra appcore feature_modbus)
 endif()
