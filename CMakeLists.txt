@@ -38,8 +38,9 @@ add_library(appcore STATIC
     src/core/connection_state.cpp
     src/core/connection_state.h
     src/core/async/worker.cpp
-    src/core/async/worker.h)
-target_include_directories(appcore PUBLIC src/core src/core/async)
+    src/core/async/worker.h
+    src/core/protocol/protocol_driver.h)
+target_include_directories(appcore PUBLIC src/core src/core/async src/core/protocol)
 target_link_libraries(appcore PUBLIC Qt5::Core)
 
 # --- layer 2: infra --------------------------------------------------------

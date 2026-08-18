@@ -7,7 +7,7 @@
 #include <string>
 
 MqConnection::MqConnection(QObject *parent)
-    : QObject(parent) {
+    : ProtocolDriver(parent) {
     connect(&state_, &ConnectionState::connectionStateChanged,
             this, &MqConnection::connectionStateChanged);
     heartbeatTimer_.setSingleShot(false);

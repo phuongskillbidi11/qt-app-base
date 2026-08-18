@@ -25,6 +25,12 @@ peer that briefly went away, and recovery from that must stay fast.
 listens to that and nothing else. In the project this came from, heartbeat monitoring and
 auto-reconnect were added later without changing a single line in any of seven UI tabs.
 
+### `protocol/protocol_driver.h`
+The interface every field-protocol connection reports through: `isReady()`,
+`errorString()`, `connectionStateChanged(bool)`. Deliberately does not include a "start
+connecting" method — every protocol's real connect parameters differ, and one conformer
+(`MqConnection`) is not enough evidence to design a generic one from.
+
 ### `async/worker.{h,cpp}`
 The **only** place allowed to run a blocking call.
 

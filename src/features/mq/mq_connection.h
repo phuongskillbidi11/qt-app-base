@@ -1,18 +1,18 @@
 #pragma once
 
 #include "connection_state.h"
+#include "protocol_driver.h"
 
 #include <amqpcpp.h>
 
 #include <QByteArray>
-#include <QObject>
 #include <QString>
 #include <QTcpSocket>
 #include <QTimer>
 
 #include <memory>
 
-class MqConnection : public QObject, public AMQP::ConnectionHandler {
+class MqConnection : public ProtocolDriver, public AMQP::ConnectionHandler {
     Q_OBJECT
 
 public:
@@ -26,11 +26,8 @@ public:
                        const QString &password);
 
     AMQP::Connection *connection() const;
-    bool isReady() const;
-    QString errorString() const;
-
-signals:
-    void connectionStateChanged(bool connected);
+    bool isReady() const override;
+    QString errorString() const override;
 
 protected:
     void onData(AMQP::Connection *connection, const char *buffer, size_t size) override;
