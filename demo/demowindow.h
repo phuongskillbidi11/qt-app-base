@@ -9,7 +9,9 @@
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QComboBox;
 class QSpinBox;
+class QStackedWidget;
 class QTimer;
 
 // The base's proof of life. Its fake-connection group has no device and no network: a fake
@@ -39,6 +41,8 @@ private:
 
     ModbusConnection m_modbus;
     QTimer *m_modbusPollTimer = nullptr;
+    QComboBox *m_protocolCombo = nullptr;
+    QStackedWidget *m_protocolStack = nullptr;
     QLineEdit *m_modbusHost = nullptr;
     QSpinBox *m_modbusPort = nullptr;
     QPushButton *m_btnModbusConnect = nullptr;

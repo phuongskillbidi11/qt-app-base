@@ -5,12 +5,14 @@
 #include "thememanager.h"
 
 #include <QAction>
+#include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QThread>
 #include <QTimer>
@@ -38,7 +40,21 @@ DemoWindow::DemoWindow() {
     layout->addWidget(m_btnDisconnect);
     layout->addWidget(m_btnReachable);
     layout->addSpacing(12);
-    layout->addWidget(new QLabel(
+
+    layout->addWidget(new QLabel("Protocol:"));
+    m_protocolCombo = new QComboBox;
+    m_protocolCombo->addItem("Modbus TCP");
+    m_protocolCombo->addItem("RabbitMQ (not available in this build)");
+    layout->addWidget(m_protocolCombo);
+
+    m_protocolStack = new QStackedWidget;
+
+    // Page 0 -- Modbus TCP. Identical to Step 4c's group, just moved into its own page's
+    // layout instead of the window's top-level layout -- see spec.md R1.
+    auto *modbusPage = new QWidget;
+    auto *modbusPageLayout = new QVBoxLayout(modbusPage);
+    modbusPageLayout->setContentsMargins(0, 0, 0, 0);
+    modbusPageLayout->addWidget(new QLabel(
         "Modbus TCP (real network -- needs a running device or the pymodbus dev simulator)"));
 
     auto *modbusFieldsRow = new QWidget;
@@ -52,17 +68,37 @@ DemoWindow::DemoWindow() {
     m_modbusPort->setRange(1, 65535);
     m_modbusPort->setValue(5020);
     modbusFieldsLayout->addWidget(m_modbusPort);
-    layout->addWidget(modbusFieldsRow);
+    modbusPageLayout->addWidget(modbusFieldsRow);
 
     m_btnModbusConnect = new QPushButton("Connect");
     m_btnModbusDisconnect = new QPushButton("Disconnect");
-    layout->addWidget(m_btnModbusConnect);
-    layout->addWidget(m_btnModbusDisconnect);
+    modbusPageLayout->addWidget(m_btnModbusConnect);
+    modbusPageLayout->addWidget(m_btnModbusDisconnect);
 
     m_modbusStateLabel = new QLabel("State: Disconnected");
     m_modbusRegistersLabel = new QLabel(QString::fromUtf8("Registers (unit 1, addr 0-4): \u2014"));
-    layout->addWidget(m_modbusStateLabel);
-    layout->addWidget(m_modbusRegistersLabel);
+    modbusPageLayout->addWidget(m_modbusStateLabel);
+    modbusPageLayout->addWidget(m_modbusRegistersLabel);
+    modbusPageLayout->addStretch(1);
+    m_protocolStack->addWidget(modbusPage);
+
+    // Page 1 -- RabbitMQ, placeholder only. Not wired -- see spec.md's build-dependency
+    // finding (AMQP-CPP is not available to qt-app-base's own standalone build).
+    auto *rabbitPage = new QWidget;
+    auto *rabbitPageLayout = new QVBoxLayout(rabbitPage);
+    rabbitPageLayout->setContentsMargins(0, 0, 0, 0);
+    rabbitPageLayout->addWidget(new QLabel(
+        "RabbitMQ is not available in this build yet -- qt-app-base's own standalone build\n"
+        "has no AMQP-CPP vendored (only qt-mq-lab does). See\n"
+        ".plans/2026-08-18-protocol-dropdown/spec.md."));
+    rabbitPageLayout->addStretch(1);
+    m_protocolStack->addWidget(rabbitPage);
+
+    layout->addWidget(m_protocolStack);
+
+    connect(m_protocolCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            m_protocolStack, &QStackedWidget::setCurrentIndex);
+
     layout->addSpacing(12);
     layout->addWidget(btnBlock);
     layout->addWidget(m_workerLabel);
