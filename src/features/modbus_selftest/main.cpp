@@ -25,9 +25,15 @@ int main() {
     const QByteArray validFrame = QByteArray::fromHex("0001000000050103020064");
     const ModbusCodec::ReadHoldingRegistersResponse valid =
         ModbusCodec::decodeReadHoldingRegistersResponse(validFrame);
+    // Not QVector<uint16_t>::operator== -- Qt 5.15's qvector.h relies on MSVC's
+    // stdext::make_checked_array_iterator for that operator, which some MSVC toolset
+    // versions do not expose without an explicit <iterator> include Qt itself is missing.
+    // This project's own CI hit exactly that (first-ever QVector<uint16_t> comparison in
+    // the codebase); comparing manually sidesteps the Qt bug regardless of MSVC version.
+    const bool registersMatch = valid.registers.size() == 1 && valid.registers.at(0) == 100;
     check(valid.status == ModbusCodec::ResponseStatus::Ok
               && valid.transactionId == 1
-              && valid.registers == QVector<uint16_t>{100},
+              && registersMatch,
           "decode returns Ok with the known register value");
 
     const ModbusCodec::ReadHoldingRegistersResponse truncated =
