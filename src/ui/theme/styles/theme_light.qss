@@ -74,8 +74,8 @@ QSpinBox::up-button, QSpinBox::down-button {
 }
 QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #E4E6E2; }
 QSpinBox::up-button:pressed, QSpinBox::down-button:pressed { background: #D3D6D2; }
-QSpinBox::up-arrow { image: url(:/styles/icons/spin_up_light.svg); width: 8px; height: 6px; }
-QSpinBox::down-arrow { image: url(:/styles/icons/spin_down_light.svg); width: 8px; height: 6px; }
+QSpinBox::up-arrow { image: url(:/styles/icons/spin_up_light.png); width: 8px; height: 6px; }
+QSpinBox::down-arrow { image: url(:/styles/icons/spin_down_light.png); width: 8px; height: 6px; }
 
 /* ---------- Nut ---------- */
 QPushButton {

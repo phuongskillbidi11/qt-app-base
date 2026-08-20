@@ -69,8 +69,8 @@ QSpinBox::up-button, QSpinBox::down-button {
 }
 QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #232A32; }
 QSpinBox::up-button:pressed, QSpinBox::down-button:pressed { background: #1D242B; }
-QSpinBox::up-arrow { image: url(:/styles/icons/spin_up_dark.svg); width: 8px; height: 6px; }
-QSpinBox::down-arrow { image: url(:/styles/icons/spin_down_dark.svg); width: 8px; height: 6px; }
+QSpinBox::up-arrow { image: url(:/styles/icons/spin_up_dark.png); width: 8px; height: 6px; }
+QSpinBox::down-arrow { image: url(:/styles/icons/spin_down_dark.png); width: 8px; height: 6px; }
 
 QPushButton {
     background: #232A32;

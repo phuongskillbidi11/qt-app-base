@@ -2,9 +2,9 @@
   <qresource prefix="/styles">
     <file alias="theme_light.qss">styles/theme_light.qss</file>
     <file alias="theme_dark.qss">styles/theme_dark.qss</file>
-    <file alias="icons/spin_up_dark.svg">styles/icons/spin_up_dark.svg</file>
-    <file alias="icons/spin_down_dark.svg">styles/icons/spin_down_dark.svg</file>
-    <file alias="icons/spin_up_light.svg">styles/icons/spin_up_light.svg</file>
-    <file alias="icons/spin_down_light.svg">styles/icons/spin_down_light.svg</file>
+    <file alias="icons/spin_up_dark.png">styles/icons/spin_up_dark.png</file>
+    <file alias="icons/spin_down_dark.png">styles/icons/spin_down_dark.png</file>
+    <file alias="icons/spin_up_light.png">styles/icons/spin_up_light.png</file>
+    <file alias="icons/spin_down_light.png">styles/icons/spin_down_light.png</file>
   </qresource>
 </RCC>
