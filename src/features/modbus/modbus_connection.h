@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QVector>
 
 #include <cstdint>
@@ -33,6 +34,10 @@ public:
     void connectToHost(const QString &host, quint16 port);
     void disconnectNow();
 
+    // Applies to every future request; does not affect one already in flight. Default is
+    // 1000ms if never called — see spec.md D2.
+    void setRequestTimeoutMs(int ms);
+
     // Both no-op (do not write to the socket) unless isReady() and no other request is
     // already outstanding -- see spec.md D2 of
     // .plans/2026-08-20-modbus-write-single-register.
@@ -52,6 +57,7 @@ private:
     enum class PendingRequest { None, ReadHoldingRegisters, WriteSingleRegister };
 
     void onSocketReadyRead();
+    void onRequestTimeout();
 
     QTcpSocket socket_;
     ConnectionState state_;
@@ -59,4 +65,6 @@ private:
     QByteArray readBuffer_;
     uint16_t nextTransactionId_ = 1;
     PendingRequest pendingRequest_ = PendingRequest::None;
+    QTimer requestTimer_;
+    int requestTimeoutMs_ = 1000;
 };

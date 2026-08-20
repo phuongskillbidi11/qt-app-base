@@ -61,6 +61,11 @@ DemoWindow::DemoWindow() {
     m_modbusPort->setRange(1, 65535);
     m_modbusPort->setValue(5020);
     modbusFieldsLayout->addWidget(m_modbusPort);
+    modbusFieldsLayout->addWidget(new QLabel("Timeout (ms):"));
+    m_modbusTimeout = new QSpinBox;
+    m_modbusTimeout->setRange(100, 30000);
+    m_modbusTimeout->setValue(1000);
+    modbusFieldsLayout->addWidget(m_modbusTimeout);
     modbusPageLayout->addWidget(modbusFieldsRow);
 
     auto *modbusPollFieldsRow = new QWidget;
@@ -180,6 +185,9 @@ DemoWindow::DemoWindow() {
     m_modbusPollTimer->start();
     connect(m_modbusPollRate, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [this](int value) { m_modbusPollTimer->setInterval(value); });
+    m_modbus.setRequestTimeoutMs(m_modbusTimeout->value());
+    connect(m_modbusTimeout, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int value) { m_modbus.setRequestTimeoutMs(value); });
     connect(m_modbusRegisterStart, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [this](int) { rebuildModbusTableRows(); });
     connect(m_modbusCount, QOverload<int>::of(&QSpinBox::valueChanged),

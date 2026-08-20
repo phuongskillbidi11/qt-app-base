@@ -3,6 +3,8 @@
 #include <QAbstractSocket>
 
 ModbusConnection::ModbusConnection(QObject *parent) : ProtocolDriver(parent) {
+    requestTimer_.setSingleShot(true);
+    connect(&requestTimer_, &QTimer::timeout, this, &ModbusConnection::onRequestTimeout);
     connect(&state_, &ConnectionState::connectionStateChanged,
             this, &ModbusConnection::connectionStateChanged);
     connect(&state_, &ConnectionState::connectionStateChanged, this, [this](bool connected) {
@@ -30,6 +32,7 @@ void ModbusConnection::connectToHost(const QString &host, quint16 port) {
     error_.clear();
     readBuffer_.clear();
     pendingRequest_ = PendingRequest::None;
+    requestTimer_.stop();
     state_.setHandlers(
         [this, host, port]() {
             error_.clear();
@@ -47,6 +50,7 @@ void ModbusConnection::disconnectNow() {
     socket_.abort();
     readBuffer_.clear();
     pendingRequest_ = PendingRequest::None;
+    requestTimer_.stop();
 }
 
 void ModbusConnection::readHoldingRegisters(quint8 unitId, quint16 startAddress, quint16 quantity) {
@@ -60,6 +64,7 @@ void ModbusConnection::readHoldingRegisters(quint8 unitId, quint16 startAddress,
     request.quantity = quantity;
     pendingRequest_ = PendingRequest::ReadHoldingRegisters;
     socket_.write(ModbusCodec::encodeReadHoldingRegistersRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
 }
 
 void ModbusConnection::writeSingleRegister(quint8 unitId, quint16 address, quint16 value) {
@@ -73,6 +78,7 @@ void ModbusConnection::writeSingleRegister(quint8 unitId, quint16 address, quint
     request.value = value;
     pendingRequest_ = PendingRequest::WriteSingleRegister;
     socket_.write(ModbusCodec::encodeWriteSingleRegisterRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
 }
 
 void ModbusConnection::onSocketReadyRead() {
@@ -86,6 +92,7 @@ void ModbusConnection::onSocketReadyRead() {
         }
         readBuffer_.clear();
         pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
         if (response.status == ModbusCodec::ResponseStatus::Ok) {
             emit holdingRegistersRead(response.registers);
         } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
@@ -104,6 +111,7 @@ void ModbusConnection::onSocketReadyRead() {
         }
         readBuffer_.clear();
         pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
         if (response.status == ModbusCodec::ResponseStatus::Ok) {
             emit singleRegisterWritten(response.address, response.value);
         } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
@@ -118,6 +126,21 @@ void ModbusConnection::onSocketReadyRead() {
     // request at a time, enforced by both readHoldingRegisters() and writeSingleRegister()).
     // Drop them rather than let them corrupt whatever the next real response turns out to be.
     readBuffer_.clear();
+}
+
+void ModbusConnection::setRequestTimeoutMs(int ms) {
+    requestTimeoutMs_ = ms;
+}
+
+void ModbusConnection::onRequestTimeout() {
+    const PendingRequest timedOut = pendingRequest_;
+    pendingRequest_ = PendingRequest::None;
+    readBuffer_.clear();
+    if (timedOut == PendingRequest::ReadHoldingRegisters) {
+        emit readFailed("timed out waiting for a response");
+    } else if (timedOut == PendingRequest::WriteSingleRegister) {
+        emit writeFailed("timed out waiting for a response");
+    }
 }
 
 bool ModbusConnection::isReady() const {

@@ -49,6 +49,7 @@ private:
     QStackedWidget *m_protocolStack = nullptr;
     QLineEdit *m_modbusHost = nullptr;
     QSpinBox *m_modbusPort = nullptr;
+    QSpinBox *m_modbusTimeout = nullptr;
     QSpinBox *m_modbusSlaveId = nullptr;
     QSpinBox *m_modbusRegisterStart = nullptr;
     QSpinBox *m_modbusCount = nullptr;
