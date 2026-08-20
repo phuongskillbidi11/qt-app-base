@@ -88,8 +88,9 @@ GitHub Releases check → SHA-256 verified download → install. `curl_client`,
 There is no `#ifdef _WIN32` anywhere else in the repo, and adding one is a design error,
 not a shortcut.
 
-Covers: the curl path, the installer file name and its silent-install arguments, whether
-self-update is possible at all, and the crash handler.
+Covers: the curl path, the installer file name, how a verified update is actually
+installed (Inno Setup on Windows, an atomic same-directory binary swap on Linux), and the
+crash handler.
 
 ---
 

@@ -9,7 +9,6 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
-#include <QProcess>
 #include <QStandardPaths>
 #include <QStringList>
 
@@ -85,11 +84,13 @@ void UpdateInstaller::applyAndRestart() {
         return;
     }
 
-    if (!QProcess::startDetached(m_installerPath, Platform::silentInstallArguments())) {
-        AppLog::error("verified update installer could not be started");
+    QString error;
+    if (!Platform::startSelfInstall(m_installerPath, QCoreApplication::applicationFilePath(),
+                                     &error)) {
+        AppLog::error("verified update could not be installed: " + error);
         return;
     }
 
-    AppLog::info("verified update installer started; handing over and exiting");
+    AppLog::info("verified update installed; handing over and exiting");
     QCoreApplication::quit();
 }

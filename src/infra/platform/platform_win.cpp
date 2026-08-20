@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QProcess>
 
 #include <windows.h>
 
@@ -39,11 +40,19 @@ QString installerFileName(const QString &applicationName) {
     return applicationName + "-setup.exe";
 }
 
-QStringList silentInstallArguments() {
+bool startSelfInstall(const QString &downloadedPath, const QString & /*currentExecutablePath*/,
+                       QString *errorOut) {
     // Inno Setup: install without UI, do not reboot, and relaunch the app afterwards.
     // The installer script must implement the /relaunch flag itself.
-    return {QStringLiteral("/SILENT"), QStringLiteral("/NORESTART"),
-            QStringLiteral("/relaunch=1")};
+    const QStringList args = {QStringLiteral("/SILENT"), QStringLiteral("/NORESTART"),
+                               QStringLiteral("/relaunch=1")};
+    if (!QProcess::startDetached(downloadedPath, args)) {
+        if (errorOut) {
+            *errorOut = "installer could not be started";
+        }
+        return false;
+    }
+    return true;
 }
 
 bool supportsSelfUpdate() {
