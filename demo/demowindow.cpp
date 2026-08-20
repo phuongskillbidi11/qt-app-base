@@ -4,16 +4,21 @@
 #include "app_settings.h"
 #include "thememanager.h"
 
+#include <QAbstractItemView>
 #include <QAction>
 #include <QComboBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QThread>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -23,23 +28,11 @@ DemoWindow::DemoWindow() {
     setWindowTitle("qt-app-base demo");
     resize(560, 320);
 
-    m_stateLabel = new QLabel;
     m_workerLabel = new QLabel("Worker: idle");
-    m_btnConnect = new QPushButton("Connect");
-    m_btnDisconnect = new QPushButton("Disconnect");
-    m_btnReachable = new QPushButton("Device: unreachable (click to toggle)");
     auto *btnBlock = new QPushButton("Run a 3s blocking call");
 
     auto *central = new QWidget;
     auto *layout = new QVBoxLayout(central);
-    layout->addWidget(new QLabel(
-        "No device, no network. The fake connection below runs through the real\n"
-        "ConnectionState, and the blocking call through the real Worker."));
-    layout->addWidget(m_stateLabel);
-    layout->addWidget(m_btnConnect);
-    layout->addWidget(m_btnDisconnect);
-    layout->addWidget(m_btnReachable);
-    layout->addSpacing(12);
 
     layout->addWidget(new QLabel("Protocol:"));
     m_protocolCombo = new QComboBox;
@@ -70,15 +63,66 @@ DemoWindow::DemoWindow() {
     modbusFieldsLayout->addWidget(m_modbusPort);
     modbusPageLayout->addWidget(modbusFieldsRow);
 
+    auto *modbusPollFieldsRow = new QWidget;
+    auto *modbusPollFieldsLayout = new QHBoxLayout(modbusPollFieldsRow);
+    modbusPollFieldsLayout->setContentsMargins(0, 0, 0, 0);
+    modbusPollFieldsLayout->addWidget(new QLabel("Slave Id:"));
+    m_modbusSlaveId = new QSpinBox;
+    m_modbusSlaveId->setRange(0, 255);
+    m_modbusSlaveId->setValue(1);
+    modbusPollFieldsLayout->addWidget(m_modbusSlaveId);
+    modbusPollFieldsLayout->addWidget(new QLabel("Register Start:"));
+    m_modbusRegisterStart = new QSpinBox;
+    m_modbusRegisterStart->setRange(0, 65535);
+    m_modbusRegisterStart->setValue(0);
+    modbusPollFieldsLayout->addWidget(m_modbusRegisterStart);
+    modbusPollFieldsLayout->addWidget(new QLabel("Count:"));
+    m_modbusCount = new QSpinBox;
+    m_modbusCount->setRange(1, 125);
+    m_modbusCount->setValue(5);
+    modbusPollFieldsLayout->addWidget(m_modbusCount);
+    modbusPollFieldsLayout->addWidget(new QLabel("Poll Rate (ms):"));
+    m_modbusPollRate = new QSpinBox;
+    m_modbusPollRate->setRange(100, 60000);
+    m_modbusPollRate->setValue(2000);
+    modbusPollFieldsLayout->addWidget(m_modbusPollRate);
+    modbusPageLayout->addWidget(modbusPollFieldsRow);
+
     m_btnModbusConnect = new QPushButton("Connect");
     m_btnModbusDisconnect = new QPushButton("Disconnect");
     modbusPageLayout->addWidget(m_btnModbusConnect);
     modbusPageLayout->addWidget(m_btnModbusDisconnect);
 
     m_modbusStateLabel = new QLabel("State: Disconnected");
-    m_modbusRegistersLabel = new QLabel(QString::fromUtf8("Registers (unit 1, addr 0-4): \u2014"));
     modbusPageLayout->addWidget(m_modbusStateLabel);
-    modbusPageLayout->addWidget(m_modbusRegistersLabel);
+
+    m_modbusTable = new QTableWidget;
+    m_modbusTable->setColumnCount(7);
+    m_modbusTable->setHorizontalHeaderLabels(
+        {"Address", "Register Value", "Big Endian", "Little Endian",
+         "BE Swapped", "LE Swapped", "Name"});
+    m_modbusTable->verticalHeader()->setVisible(false);
+    m_modbusTable->setEditTriggers(QAbstractItemView::DoubleClicked
+                                   | QAbstractItemView::EditKeyPressed);
+    modbusPageLayout->addWidget(m_modbusTable);
+
+    auto *modbusWriteRow = new QWidget;
+    auto *modbusWriteLayout = new QHBoxLayout(modbusWriteRow);
+    modbusWriteLayout->setContentsMargins(0, 0, 0, 0);
+    modbusWriteLayout->addWidget(new QLabel("Write Single Register -- Address:"));
+    m_modbusWriteAddress = new QSpinBox;
+    m_modbusWriteAddress->setRange(0, 65535);
+    modbusWriteLayout->addWidget(m_modbusWriteAddress);
+    modbusWriteLayout->addWidget(new QLabel("Value:"));
+    m_modbusWriteValue = new QSpinBox;
+    m_modbusWriteValue->setRange(0, 65535);
+    modbusWriteLayout->addWidget(m_modbusWriteValue);
+    m_btnModbusWrite = new QPushButton("Write");
+    modbusWriteLayout->addWidget(m_btnModbusWrite);
+    modbusPageLayout->addWidget(modbusWriteRow);
+
+    m_modbusWriteResultLabel = new QLabel("Last write: -");
+    modbusPageLayout->addWidget(m_modbusWriteResultLabel);
     modbusPageLayout->addStretch(1);
     m_protocolStack->addWidget(modbusPage);
 
@@ -117,37 +161,6 @@ DemoWindow::DemoWindow() {
 
     statusBar()->showMessage("Log: " + AppLog::filePath());
 
-    // The two operations that would touch hardware in a real app. Here they are a bool.
-    m_connection.setHandlers(
-        [this]() { return m_deviceReachable; },
-        [this]() { return m_deviceReachable; },
-        []() {});
-    m_connection.setHeartbeatIntervalMs(2000);
-
-    connect(&m_connection, &ConnectionState::connectionStateChanged, this,
-            [this](bool connected) {
-        AppLog::info(QString("demo connection state: %1")
-            .arg(connected ? "connected" : "disconnected"));
-        updateLabels();
-    });
-    connect(&m_connection, &ConnectionState::reconnectingChanged, this,
-            [this](bool) { updateLabels(); });
-
-    connect(m_btnConnect, &QPushButton::clicked, this, [this]() {
-        m_connection.beginAutoConnect();
-        updateLabels();
-    });
-    connect(m_btnDisconnect, &QPushButton::clicked, this, [this]() {
-        m_connection.disconnectNow();
-        updateLabels();
-    });
-    connect(m_btnReachable, &QPushButton::clicked, this, [this]() {
-        m_deviceReachable = !m_deviceReachable;
-        m_btnReachable->setText(m_deviceReachable
-            ? "Device: reachable (click to toggle)"
-            : "Device: unreachable (click to toggle)");
-    });
-
     connect(btnBlock, &QPushButton::clicked, this, [this, btnBlock]() {
         btnBlock->setEnabled(false);
         m_workerLabel->setText("Worker: running — this window must stay responsive");
@@ -162,23 +175,39 @@ DemoWindow::DemoWindow() {
     });
 
     m_modbusPollTimer = new QTimer(this);
-    m_modbusPollTimer->setInterval(2000);
+    m_modbusPollTimer->setInterval(m_modbusPollRate->value());
     connect(m_modbusPollTimer, &QTimer::timeout, this, &DemoWindow::pollModbusRegisters);
     m_modbusPollTimer->start();
+    connect(m_modbusPollRate, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int value) { m_modbusPollTimer->setInterval(value); });
+    connect(m_modbusRegisterStart, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int) { rebuildModbusTableRows(); });
+    connect(m_modbusCount, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int) { rebuildModbusTableRows(); });
 
     connect(&m_modbus, &ProtocolDriver::connectionStateChanged, this, [this](bool) {
         updateModbusLabels();
     });
     connect(&m_modbus, &ModbusConnection::holdingRegistersRead, this,
             [this](QVector<uint16_t> registers) {
-        QStringList parts;
-        for (uint16_t value : registers) {
-            parts << QString::number(value);
-        }
-        m_modbusRegistersLabel->setText("Registers (unit 1, addr 0-4): " + parts.join(", "));
+        updateModbusTableValues(registers);
     });
-    connect(&m_modbus, &ModbusConnection::readFailed, this, [this](const QString &error) {
-        m_modbusRegistersLabel->setText("Registers (unit 1, addr 0-4): read failed -- " + error);
+    connect(&m_modbus, &ModbusConnection::readFailed, this, [this](const QString &) {
+        clearModbusTableValues();
+    });
+    connect(&m_modbus, &ModbusConnection::singleRegisterWritten, this,
+            [this](quint16 address, quint16 value) {
+        m_modbusWriteResultLabel->setText(
+            QString("Last write: address %1 = %2 (confirmed)").arg(address).arg(value));
+    });
+    connect(&m_modbus, &ModbusConnection::writeFailed, this, [this](const QString &error) {
+        m_modbusWriteResultLabel->setText("Last write failed -- " + error);
+    });
+    connect(m_btnModbusWrite, &QPushButton::clicked, this, [this]() {
+        m_modbus.writeSingleRegister(
+            static_cast<quint8>(m_modbusSlaveId->value()),
+            static_cast<quint16>(m_modbusWriteAddress->value()),
+            static_cast<quint16>(m_modbusWriteValue->value()));
     });
 
     connect(m_btnModbusConnect, &QPushButton::clicked, this, [this]() {
@@ -190,8 +219,31 @@ DemoWindow::DemoWindow() {
         updateModbusLabels();
     });
 
+    connect(&m_updateChecker, &UpdateChecker::updateAvailable,
+            &m_updateInstaller, &UpdateInstaller::download);
+    connect(&m_updateInstaller, &UpdateInstaller::readyToInstall, this,
+            [this](const QString &version) {
+        QMessageBox question(QMessageBox::Question, "Update ready",
+            QString("Version %1 is ready to install. Install now?").arg(version),
+            QMessageBox::NoButton, this);
+        QPushButton *installButton = question.addButton("Install now", QMessageBox::AcceptRole);
+        question.addButton("Later", QMessageBox::RejectRole);
+        question.exec();
+        if (question.clickedButton() == installButton) {
+            m_updateInstaller.applyAndRestart();
+        }
+    });
+    connect(&m_updateInstaller, &UpdateInstaller::selfUpdateUnsupported, this,
+            [this](const QString &installerPath) {
+        QMessageBox::information(this, "Update downloaded",
+            QString("A verified update was downloaded to:\n%1\n\n"
+                    "This platform does not support automatic installation -- "
+                    "install it manually.").arg(installerPath));
+    });
+    m_updateChecker.start();
+
+    rebuildModbusTableRows();
     updateModbusLabels();
-    updateLabels();
 }
 
 void DemoWindow::raiseToFront() {
@@ -202,25 +254,82 @@ void DemoWindow::raiseToFront() {
     activateWindow();
 }
 
-void DemoWindow::updateLabels() {
-    QString state = "Disconnected";
-    if (m_connection.isConnected()) {
-        state = "Connected";
-    } else if (m_connection.isReconnecting()) {
-        state = "Reconnecting… (backoff: 5s, 5s, 5s, 15s, 15s, 30s, 60s)";
-    }
-    m_stateLabel->setText("State: " + state);
-    // Connect stays reachable whenever not connected, including mid-reconnect — the
-    // original app disabled it there and left the user with no way to intervene.
-    m_btnConnect->setEnabled(!m_connection.isConnected());
-    m_btnDisconnect->setEnabled(m_connection.isConnected() || m_connection.isReconnecting());
-}
-
 void DemoWindow::pollModbusRegisters() {
     if (!m_modbus.isReady()) {
         return;
     }
-    m_modbus.readHoldingRegisters(1, 0, 5);
+    m_modbus.readHoldingRegisters(
+        static_cast<quint8>(m_modbusSlaveId->value()),
+        static_cast<quint16>(m_modbusRegisterStart->value()),
+        static_cast<quint16>(m_modbusCount->value()));
+}
+
+void DemoWindow::rebuildModbusTableRows() {
+    const int start = m_modbusRegisterStart->value();
+    const int count = m_modbusCount->value();
+    const QString placeholder = "-";
+
+    m_modbusTable->setRowCount(count);
+    for (int row = 0; row < count; ++row) {
+        auto *addressItem = new QTableWidgetItem(QString::number(start + row));
+        addressItem->setFlags(addressItem->flags() & ~Qt::ItemIsEditable);
+        m_modbusTable->setItem(row, 0, addressItem);
+
+        for (int col = 1; col <= 5; ++col) {
+            auto *item = new QTableWidgetItem(placeholder);
+            item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+            m_modbusTable->setItem(row, col, item);
+        }
+
+        // Column 6 (Name) is intentionally left editable and not recreated on every poll --
+        // see spec.md D5. It IS recreated here because a Register Start/Count change means
+        // the row now refers to a genuinely different register; keeping an old typed name
+        // pinned to a now-different address would be actively misleading.
+        m_modbusTable->setItem(row, 6, new QTableWidgetItem);
+    }
+}
+
+void DemoWindow::updateModbusTableValues(const QVector<uint16_t> &registers) {
+    const QString placeholder = "-";
+    const int rowCount = m_modbusTable->rowCount();
+
+    for (int row = 0; row < registers.size() && row < rowCount; ++row) {
+        const uint16_t value = registers.at(row);
+        m_modbusTable->item(row, 1)->setText(QString::number(value));
+
+        if (row + 1 < registers.size()) {
+            const uint16_t next = registers.at(row + 1);
+            const uint16_t valueSwapped = static_cast<uint16_t>((value << 8) | (value >> 8));
+            const uint16_t nextSwapped = static_cast<uint16_t>((next << 8) | (next >> 8));
+
+            const quint32 bigEndian = (static_cast<quint32>(value) << 16) | next;
+            const quint32 littleEndian =
+                (static_cast<quint32>(nextSwapped) << 16) | valueSwapped;
+            const quint32 beSwapped = (static_cast<quint32>(next) << 16) | value;
+            const quint32 leSwapped =
+                (static_cast<quint32>(valueSwapped) << 16) | nextSwapped;
+
+            m_modbusTable->item(row, 2)->setText(QString::number(bigEndian));
+            m_modbusTable->item(row, 3)->setText(QString::number(littleEndian));
+            m_modbusTable->item(row, 4)->setText(QString::number(beSwapped));
+            m_modbusTable->item(row, 5)->setText(QString::number(leSwapped));
+        } else {
+            // Last row of an odd Count -- no register N+1 exists in this read to pair with.
+            // See spec.md D3: show the placeholder, do not guess.
+            for (int col = 2; col <= 5; ++col) {
+                m_modbusTable->item(row, col)->setText(placeholder);
+            }
+        }
+    }
+}
+
+void DemoWindow::clearModbusTableValues() {
+    const QString placeholder = "-";
+    for (int row = 0; row < m_modbusTable->rowCount(); ++row) {
+        for (int col = 1; col <= 5; ++col) {
+            m_modbusTable->item(row, col)->setText(placeholder);
+        }
+    }
 }
 
 void DemoWindow::updateModbusLabels() {
@@ -229,6 +338,6 @@ void DemoWindow::updateModbusLabels() {
     m_btnModbusConnect->setEnabled(!ready);
     m_btnModbusDisconnect->setEnabled(ready);
     if (!ready) {
-        m_modbusRegistersLabel->setText(QString::fromUtf8("Registers (unit 1, addr 0-4): \u2014"));
+        clearModbusTableValues();
     }
 }

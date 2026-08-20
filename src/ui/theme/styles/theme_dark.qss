@@ -56,7 +56,21 @@ QComboBox QAbstractItemView {
     background: #1B2129; border: 1px solid #2C333B; color: #E7EBEA;
     selection-background-color: #16302E; selection-color: #23BFA8; outline: none;
 }
-QSpinBox::up-button, QSpinBox::down-button { width: 16px; border-left: 1px solid #262D35; }
+/* Qt's default spin arrows are drawn by the native Windows style, which ignores this
+   stylesheet's palette entirely and renders near-invisible against a dark background. The
+   CSS zero-size/colored-border triangle trick does NOT render as a triangle in Qt's QSS
+   engine for arrow subcontrols (confirmed directly: it painted as a small solid square
+   instead) -- an explicit `image:` is the only reliable fix, so these use small SVG assets
+   instead (see styles.qrc, styles/icons/). */
+QSpinBox::up-button, QSpinBox::down-button {
+    width: 16px;
+    border-left: 1px solid #262D35;
+    background: transparent;
+}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #232A32; }
+QSpinBox::up-button:pressed, QSpinBox::down-button:pressed { background: #1D242B; }
+QSpinBox::up-arrow { image: url(:/styles/icons/spin_up_dark.svg); width: 8px; height: 6px; }
+QSpinBox::down-arrow { image: url(:/styles/icons/spin_down_dark.svg); width: 8px; height: 6px; }
 
 QPushButton {
     background: #232A32;

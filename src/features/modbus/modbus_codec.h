@@ -43,4 +43,27 @@ struct ReadHoldingRegistersResponse {
 // `data` -- the caller (ModbusConnection, not this codec) owns buffering partial reads.
 ReadHoldingRegistersResponse decodeReadHoldingRegistersResponse(const QByteArray &data);
 
+struct WriteSingleRegisterRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t address = 0;
+    uint16_t value = 0;
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket.
+QByteArray encodeWriteSingleRegisterRequest(const WriteSingleRegisterRequest &request);
+
+struct WriteSingleRegisterResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;   // meaningful only when status == Exception
+    uint16_t address = 0;        // meaningful only when status == Ok
+    uint16_t value = 0;          // meaningful only when status == Ok
+};
+
+// Decodes exactly one Write Single Register response frame from the front of `data`. A
+// successful write echoes the request's address and value back exactly, per the Modbus
+// specification -- verified directly against a real pymodbus server, not assumed.
+WriteSingleRegisterResponse decodeWriteSingleRegisterResponse(const QByteArray &data);
+
 }  // namespace ModbusCodec

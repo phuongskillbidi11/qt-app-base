@@ -139,13 +139,14 @@ own submodule supplying the `amqpcpp` target. The base does not vendor AMQP-CPP 
 
 Modbus TCP: `modbus_connection` (`QTcpSocket` + `ConnectionState`, implements
 `ProtocolDriver` — "ready" is the TCP connect succeeding, no application-level handshake
-unlike `mq`; also sends/receives Read Holding Registers PDUs via `readHoldingRegisters()` +
-`holdingRegistersRead`/`readFailed`, buffering partial TCP reads), `modbus_codec` (MBAP
-framing + Read Holding Registers, pure). No store, no settings dialog, and no function code
-besides Read Holding Registers — see `.plans/2026-08-18-modbus-tcp-driver/spec.md` and
-`.plans/2026-08-18-modbus-live-widget/spec.md` for why. Builds standalone within
-`qt-app-base` itself (`add_feature_module`); consumed by `demo/demowindow.cpp`'s live Modbus
-group (the base's first real network integration), not yet by any external app.
+unlike `mq`; sends/receives Read Holding Registers and Write Single Register PDUs via
+`readHoldingRegisters()`/`writeSingleRegister()`, tracking which single request is
+outstanding so responses decode with the right codec function — see
+`.plans/2026-08-20-modbus-write-single-register/spec.md` D2), `modbus_codec` (MBAP framing +
+Read Holding Registers + Write Single Register, pure). No store, no settings dialog, and no
+function code besides these two — see the phase specs under `.plans/` for why. Builds
+standalone within `qt-app-base` itself (`add_feature_module`); consumed by
+`demo/demowindow.cpp`'s live Modbus group.
 
 ---
 

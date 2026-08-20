@@ -48,5 +48,30 @@ int main() {
               && exception.exceptionCode == 2,
           "decode returns Exception with the known exception code");
 
+    ModbusCodec::WriteSingleRegisterRequest writeRequest;
+    writeRequest.transactionId = 1;
+    writeRequest.unitId = 1;
+    writeRequest.address = 1;
+    writeRequest.value = 3;
+    const QByteArray encodedWrite = ModbusCodec::encodeWriteSingleRegisterRequest(writeRequest);
+    check(encodedWrite == QByteArray::fromHex("000100000006010600010003"),
+          "encode produces the known Write Single Register request");
+
+    const QByteArray writeOkFrame = QByteArray::fromHex("000100000006010600010003");
+    const ModbusCodec::WriteSingleRegisterResponse writeOk =
+        ModbusCodec::decodeWriteSingleRegisterResponse(writeOkFrame);
+    check(writeOk.status == ModbusCodec::ResponseStatus::Ok
+              && writeOk.transactionId == 1
+              && writeOk.address == 1
+              && writeOk.value == 3,
+          "decode returns Ok with the echoed address and value");
+
+    const ModbusCodec::WriteSingleRegisterResponse writeException =
+        ModbusCodec::decodeWriteSingleRegisterResponse(
+            QByteArray::fromHex("000100000003018602"));
+    check(writeException.status == ModbusCodec::ResponseStatus::Exception
+              && writeException.exceptionCode == 2,
+          "decode returns Exception with the known exception code for a write");
+
     return allPassed ? 0 : 1;
 }
