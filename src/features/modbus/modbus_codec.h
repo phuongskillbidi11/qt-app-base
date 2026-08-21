@@ -112,4 +112,102 @@ struct ReadInputRegistersResponse {
 // directly against a real pymodbus server, not assumed.
 ReadInputRegistersResponse decodeReadInputRegistersResponse(const QByteArray &data);
 
+struct ReadCoilsRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t startAddress = 0;
+    uint16_t quantity = 1;   // valid range 1-2000 per the Modbus specification
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket.
+QByteArray encodeReadCoilsRequest(const ReadCoilsRequest &request);
+
+struct ReadCoilsResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;   // meaningful only when status == Exception
+    QVector<bool> coils;         // meaningful only when status == Ok; LSB-first within each
+                                 // byte (coil N = bit N of the byte at N/8) -- verified
+                                 // directly against a real pymodbus round-trip, not assumed.
+                                 // Includes any trailing padding bits in the last byte --
+                                 // the caller, which knows the requested quantity, decides
+                                 // how many are meaningful (same boundary this codec already
+                                 // draws for register counts).
+};
+
+// Decodes exactly one Read Coils response frame from the front of `data`.
+ReadCoilsResponse decodeReadCoilsResponse(const QByteArray &data);
+
+struct ReadDiscreteInputsRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t startAddress = 0;
+    uint16_t quantity = 1;   // valid range 1-2000 per the Modbus specification
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket.
+QByteArray encodeReadDiscreteInputsRequest(const ReadDiscreteInputsRequest &request);
+
+struct ReadDiscreteInputsResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;   // meaningful only when status == Exception
+    QVector<bool> inputs;        // meaningful only when status == Ok; same LSB-first
+                                 // packing as ReadCoilsResponse::coils.
+};
+
+// Decodes exactly one Read Discrete Inputs response frame from the front of `data`. Byte-
+// identical shape to Read Coils -- only the function code differs.
+ReadDiscreteInputsResponse decodeReadDiscreteInputsResponse(const QByteArray &data);
+
+struct WriteSingleCoilRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t address = 0;
+    bool value = false;
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket. Encodes
+// `value` as 0xFF00 (ON) or 0x0000 (OFF) per the Modbus specification.
+QByteArray encodeWriteSingleCoilRequest(const WriteSingleCoilRequest &request);
+
+struct WriteSingleCoilResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;   // meaningful only when status == Exception
+    uint16_t address = 0;        // meaningful only when status == Ok
+    bool value = false;          // meaningful only when status == Ok
+};
+
+// Decodes exactly one Write Single Coil response frame from the front of `data`. A
+// successful write echoes the request exactly, per the Modbus specification -- verified
+// directly against a real pymodbus server, not assumed.
+WriteSingleCoilResponse decodeWriteSingleCoilResponse(const QByteArray &data);
+
+struct WriteMultipleCoilsRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t startAddress = 0;
+    QVector<bool> values;   // 1-1968 coils per the Modbus specification
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket, LSB-first
+// bit-packed per the Modbus specification -- verified directly against a real pymodbus
+// round-trip, not assumed.
+QByteArray encodeWriteMultipleCoilsRequest(const WriteMultipleCoilsRequest &request);
+
+struct WriteMultipleCoilsResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;   // meaningful only when status == Exception
+    uint16_t startAddress = 0;   // meaningful only when status == Ok
+    uint16_t quantity = 0;       // meaningful only when status == Ok
+};
+
+// Decodes exactly one Write Multiple Coils response frame from the front of `data`. A
+// successful write echoes the request's start address and coil count back -- not the
+// values themselves -- per the Modbus specification, verified directly against a real
+// pymodbus client/server exchange, not assumed.
+WriteMultipleCoilsResponse decodeWriteMultipleCoilsResponse(const QByteArray &data);
+
 }  // namespace ModbusCodec

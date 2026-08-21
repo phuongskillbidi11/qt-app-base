@@ -118,5 +118,89 @@ int main() {
               && writeMultipleException.exceptionCode == 2,
           "decode returns Exception with the known exception code for a multi-register write");
 
+    ModbusCodec::ReadCoilsRequest coilsRequest;
+    coilsRequest.transactionId = 1;
+    coilsRequest.unitId = 1;
+    coilsRequest.startAddress = 0;
+    coilsRequest.quantity = 10;
+    const QByteArray encodedCoils = ModbusCodec::encodeReadCoilsRequest(coilsRequest);
+    check(encodedCoils == QByteArray::fromHex("00010000000601010000000a"),
+          "encode produces the known Read Coils request");
+
+    const ModbusCodec::ReadCoilsResponse coilsValid =
+        ModbusCodec::decodeReadCoilsResponse(QByteArray::fromHex("0001000000050101020d01"));
+    const bool coilsMatch = coilsValid.coils.size() == 16
+        && coilsValid.coils.at(0) == true && coilsValid.coils.at(1) == false
+        && coilsValid.coils.at(2) == true && coilsValid.coils.at(3) == true
+        && coilsValid.coils.at(8) == true && coilsValid.coils.at(9) == false;
+    check(coilsValid.status == ModbusCodec::ResponseStatus::Ok
+              && coilsValid.transactionId == 1
+              && coilsMatch,
+          "decode returns Ok with the known coil states (LSB-first bit order)");
+
+    const ModbusCodec::ReadCoilsResponse coilsException =
+        ModbusCodec::decodeReadCoilsResponse(QByteArray::fromHex("000100000003018102"));
+    check(coilsException.status == ModbusCodec::ResponseStatus::Exception
+              && coilsException.exceptionCode == 2,
+          "decode returns Exception with the known exception code for Read Coils");
+
+    ModbusCodec::ReadDiscreteInputsRequest discreteRequest;
+    discreteRequest.transactionId = 1;
+    discreteRequest.unitId = 1;
+    discreteRequest.startAddress = 0;
+    discreteRequest.quantity = 8;
+    const QByteArray encodedDiscrete =
+        ModbusCodec::encodeReadDiscreteInputsRequest(discreteRequest);
+    check(encodedDiscrete == QByteArray::fromHex("000100000006010200000008"),
+          "encode produces the known Read Discrete Inputs request");
+
+    const ModbusCodec::ReadDiscreteInputsResponse discreteValid =
+        ModbusCodec::decodeReadDiscreteInputsResponse(
+            QByteArray::fromHex("00010000000401020182"));
+    const bool discreteMatch = discreteValid.inputs.size() == 8
+        && discreteValid.inputs.at(0) == false && discreteValid.inputs.at(1) == true
+        && discreteValid.inputs.at(7) == true;
+    check(discreteValid.status == ModbusCodec::ResponseStatus::Ok
+              && discreteValid.transactionId == 1
+              && discreteMatch,
+          "decode returns Ok with the known discrete input states");
+
+    ModbusCodec::WriteSingleCoilRequest coilWriteRequest;
+    coilWriteRequest.transactionId = 1;
+    coilWriteRequest.unitId = 1;
+    coilWriteRequest.address = 5;
+    coilWriteRequest.value = true;
+    const QByteArray encodedCoilWrite =
+        ModbusCodec::encodeWriteSingleCoilRequest(coilWriteRequest);
+    check(encodedCoilWrite == QByteArray::fromHex("00010000000601050005ff00"),
+          "encode produces the known Write Single Coil request (ON = 0xFF00)");
+
+    const ModbusCodec::WriteSingleCoilResponse coilWriteOk =
+        ModbusCodec::decodeWriteSingleCoilResponse(
+            QByteArray::fromHex("00010000000601050005ff00"));
+    check(coilWriteOk.status == ModbusCodec::ResponseStatus::Ok
+              && coilWriteOk.address == 5
+              && coilWriteOk.value == true,
+          "decode returns Ok with the echoed coil address and ON state");
+
+    ModbusCodec::WriteMultipleCoilsRequest multiCoilRequest;
+    multiCoilRequest.transactionId = 1;
+    multiCoilRequest.unitId = 1;
+    multiCoilRequest.startAddress = 0;
+    multiCoilRequest.values =
+        {true, false, true, true, false, false, false, false, true, false};
+    const QByteArray encodedMultiCoil =
+        ModbusCodec::encodeWriteMultipleCoilsRequest(multiCoilRequest);
+    check(encodedMultiCoil == QByteArray::fromHex("000100000009010f0000000a020d01"),
+          "encode produces the known Write Multiple Coils request (LSB-first packed)");
+
+    const ModbusCodec::WriteMultipleCoilsResponse multiCoilOk =
+        ModbusCodec::decodeWriteMultipleCoilsResponse(
+            QByteArray::fromHex("000100000006010f0000000a"));
+    check(multiCoilOk.status == ModbusCodec::ResponseStatus::Ok
+              && multiCoilOk.startAddress == 0
+              && multiCoilOk.quantity == 10,
+          "decode returns Ok with the echoed start address and coil count");
+
     return allPassed ? 0 : 1;
 }

@@ -43,11 +43,18 @@ public:
     // .plans/2026-08-20-modbus-write-single-register.
     void readHoldingRegisters(quint8 unitId, quint16 startAddress, quint16 quantity);
     void readInputRegisters(quint8 unitId, quint16 startAddress, quint16 quantity);
+    void readCoils(quint8 unitId, quint16 startAddress, quint16 quantity);
+    void readDiscreteInputs(quint8 unitId, quint16 startAddress, quint16 quantity);
     void writeSingleRegister(quint8 unitId, quint16 address, quint16 value);
+    void writeSingleCoil(quint8 unitId, quint16 address, bool value);
     // `values` must be 1-123 entries -- validated by the caller (the demo UI), not here;
     // see spec.md D3 of .plans/2026-08-21-modbus-write-multiple-registers.
     void writeMultipleRegisters(quint8 unitId, quint16 startAddress,
                                  const QVector<quint16> &values);
+    // `values` must be 1-1968 entries -- validated by the caller (the demo UI), not here;
+    // see spec.md D6 of .plans/2026-08-21-modbus-unified-function-ui.
+    void writeMultipleCoils(quint8 unitId, quint16 startAddress,
+                             const QVector<bool> &values);
 
     bool isReady() const override;
     QString errorString() const override;
@@ -55,15 +62,23 @@ public:
 signals:
     void holdingRegistersRead(QVector<uint16_t> registers);
     void inputRegistersRead(QVector<uint16_t> registers);
+    void coilsRead(QVector<bool> coils);
+    void discreteInputsRead(QVector<bool> inputs);
     void readFailed(QString error);
     void singleRegisterWritten(quint16 address, quint16 value);
     void writeFailed(QString error);
     void multipleRegistersWritten(quint16 startAddress, quint16 quantity);
     void multipleWriteFailed(QString error);
+    void singleCoilWritten(quint16 address, bool value);
+    void singleCoilWriteFailed(QString error);
+    void multipleCoilsWritten(quint16 startAddress, quint16 quantity);
+    void multipleCoilWriteFailed(QString error);
 
 private:
     enum class PendingRequest { None, ReadHoldingRegisters, WriteSingleRegister,
-                                 WriteMultipleRegisters, ReadInputRegisters };
+                                 WriteMultipleRegisters, ReadInputRegisters,
+                                 ReadCoils, ReadDiscreteInputs, WriteSingleCoil,
+                                 WriteMultipleCoils };
 
     void onSocketReadyRead();
     void onRequestTimeout();

@@ -35,9 +35,14 @@ public slots:
 private:
     void updateModbusLabels();
     void rebuildModbusTableRows();
-    void updateModbusTableValues(const QVector<uint16_t> &registers);
+    void updateModbusRegisterTableValues(const QVector<uint16_t> &registers);
+    void updateModbusCoilTableValues(const QVector<bool> &bits);
     void clearModbusTableValues();
     void pollModbusRegisters();
+    void onModbusFunctionChanged();
+    void onModbusWriteClicked();
+    bool isModbusCoilFunction() const;
+    bool isModbusWriteFunction() const;
 
     Worker m_worker;
     UpdateChecker m_updateChecker;
@@ -54,19 +59,15 @@ private:
     QSpinBox *m_modbusRegisterStart = nullptr;
     QSpinBox *m_modbusCount = nullptr;
     QSpinBox *m_modbusPollRate = nullptr;
-    QComboBox *m_modbusRegisterType = nullptr;
-    QSpinBox *m_modbusWriteAddress = nullptr;
-    QSpinBox *m_modbusWriteValue = nullptr;
-    QPushButton *m_btnModbusWrite = nullptr;
-    QLabel *m_modbusWriteResultLabel = nullptr;
-    QSpinBox *m_modbusWriteMultipleAddress = nullptr;
-    QLineEdit *m_modbusWriteMultipleValues = nullptr;
-    QPushButton *m_btnModbusWriteMultiple = nullptr;
-    QLabel *m_modbusWriteMultipleResultLabel = nullptr;
+    QComboBox *m_modbusFunction = nullptr;
     QPushButton *m_btnModbusConnect = nullptr;
     QPushButton *m_btnModbusDisconnect = nullptr;
     QLabel *m_modbusStateLabel = nullptr;
+    QStackedWidget *m_modbusModeStack = nullptr;
     QTableWidget *m_modbusTable = nullptr;
+    QLineEdit *m_modbusWriteValues = nullptr;
+    QPushButton *m_btnModbusWrite = nullptr;
+    QLabel *m_modbusWriteResultLabel = nullptr;
 
     QLabel *m_workerLabel = nullptr;
 };

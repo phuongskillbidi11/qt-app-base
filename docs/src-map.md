@@ -140,16 +140,15 @@ own submodule supplying the `amqpcpp` target. The base does not vendor AMQP-CPP 
 
 Modbus TCP: `modbus_connection` (`QTcpSocket` + `ConnectionState`, implements
 `ProtocolDriver` — "ready" is the TCP connect succeeding, no application-level handshake
-unlike `mq`; sends/receives Read Holding Registers and Write Single Register PDUs via
-`readHoldingRegisters()`/`writeSingleRegister()`, tracking which single request is
-outstanding so responses decode with the right codec function, and a per-request timeout
-(`setRequestTimeoutMs()`) that fails a stuck request cleanly instead of blocking every
-future one — see `.plans/2026-08-20-modbus-write-single-register/spec.md` D2 and
-`.plans/2026-08-21-modbus-request-timeout/spec.md`), `modbus_codec` (MBAP framing +
-Read Holding Registers, Read Input Registers, Write Single Register, and Write Multiple
-Registers, pure). No store, no settings dialog, and no function code besides these four —
-see the phase specs
-under `.plans/` for why. Builds
+unlike `mq`; sends/receives all 8 standard Modbus function codes (01/02/03/04/05/06/15/16)
+via one method per function, tracking which single request is outstanding so responses
+decode with the right codec function, and a per-request timeout (`setRequestTimeoutMs()`)
+that fails a stuck request cleanly instead of blocking every future one), `modbus_codec`
+(MBAP framing, pure, one request/response struct pair per function code -- registers as
+`QVector<uint16_t>`, coils/discrete inputs as `QVector<bool>` with verified LSB-first
+bit-packing). The demo's own UI selects among all 8 via one Function dropdown rather than
+one widget row per function -- see `.plans/2026-08-21-modbus-unified-function-ui/spec.md`.
+Builds
 standalone within `qt-app-base` itself (`add_feature_module`); consumed by
 `demo/demowindow.cpp`'s live Modbus group.
 

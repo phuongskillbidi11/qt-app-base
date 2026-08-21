@@ -81,6 +81,34 @@ void ModbusConnection::readInputRegisters(quint8 unitId, quint16 startAddress, q
     requestTimer_.start(requestTimeoutMs_);
 }
 
+void ModbusConnection::readCoils(quint8 unitId, quint16 startAddress, quint16 quantity) {
+    if (!isReady() || pendingRequest_ != PendingRequest::None) {
+        return;
+    }
+    ModbusCodec::ReadCoilsRequest request;
+    request.transactionId = nextTransactionId_++;
+    request.unitId = unitId;
+    request.startAddress = startAddress;
+    request.quantity = quantity;
+    pendingRequest_ = PendingRequest::ReadCoils;
+    socket_.write(ModbusCodec::encodeReadCoilsRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
+}
+
+void ModbusConnection::readDiscreteInputs(quint8 unitId, quint16 startAddress, quint16 quantity) {
+    if (!isReady() || pendingRequest_ != PendingRequest::None) {
+        return;
+    }
+    ModbusCodec::ReadDiscreteInputsRequest request;
+    request.transactionId = nextTransactionId_++;
+    request.unitId = unitId;
+    request.startAddress = startAddress;
+    request.quantity = quantity;
+    pendingRequest_ = PendingRequest::ReadDiscreteInputs;
+    socket_.write(ModbusCodec::encodeReadDiscreteInputsRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
+}
+
 void ModbusConnection::writeSingleRegister(quint8 unitId, quint16 address, quint16 value) {
     if (!isReady() || pendingRequest_ != PendingRequest::None) {
         return;
@@ -107,6 +135,35 @@ void ModbusConnection::writeMultipleRegisters(quint8 unitId, quint16 startAddres
     request.values = values;
     pendingRequest_ = PendingRequest::WriteMultipleRegisters;
     socket_.write(ModbusCodec::encodeWriteMultipleRegistersRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
+}
+
+void ModbusConnection::writeSingleCoil(quint8 unitId, quint16 address, bool value) {
+    if (!isReady() || pendingRequest_ != PendingRequest::None) {
+        return;
+    }
+    ModbusCodec::WriteSingleCoilRequest request;
+    request.transactionId = nextTransactionId_++;
+    request.unitId = unitId;
+    request.address = address;
+    request.value = value;
+    pendingRequest_ = PendingRequest::WriteSingleCoil;
+    socket_.write(ModbusCodec::encodeWriteSingleCoilRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
+}
+
+void ModbusConnection::writeMultipleCoils(quint8 unitId, quint16 startAddress,
+                                           const QVector<bool> &values) {
+    if (!isReady() || pendingRequest_ != PendingRequest::None) {
+        return;
+    }
+    ModbusCodec::WriteMultipleCoilsRequest request;
+    request.transactionId = nextTransactionId_++;
+    request.unitId = unitId;
+    request.startAddress = startAddress;
+    request.values = values;
+    pendingRequest_ = PendingRequest::WriteMultipleCoils;
+    socket_.write(ModbusCodec::encodeWriteMultipleCoilsRequest(request));
     requestTimer_.start(requestTimeoutMs_);
 }
 
@@ -190,6 +247,84 @@ void ModbusConnection::onSocketReadyRead() {
         return;
     }
 
+    if (pendingRequest_ == PendingRequest::ReadCoils) {
+        const ModbusCodec::ReadCoilsResponse response =
+            ModbusCodec::decodeReadCoilsResponse(readBuffer_);
+        if (response.status == ModbusCodec::ResponseStatus::Incomplete) {
+            return;
+        }
+        readBuffer_.clear();
+        pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
+        if (response.status == ModbusCodec::ResponseStatus::Ok) {
+            emit coilsRead(response.coils);
+        } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
+            emit readFailed(QString("Modbus exception code %1").arg(response.exceptionCode));
+        } else {
+            emit readFailed("Malformed Modbus response");
+        }
+        return;
+    }
+
+    if (pendingRequest_ == PendingRequest::ReadDiscreteInputs) {
+        const ModbusCodec::ReadDiscreteInputsResponse response =
+            ModbusCodec::decodeReadDiscreteInputsResponse(readBuffer_);
+        if (response.status == ModbusCodec::ResponseStatus::Incomplete) {
+            return;
+        }
+        readBuffer_.clear();
+        pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
+        if (response.status == ModbusCodec::ResponseStatus::Ok) {
+            emit discreteInputsRead(response.inputs);
+        } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
+            emit readFailed(QString("Modbus exception code %1").arg(response.exceptionCode));
+        } else {
+            emit readFailed("Malformed Modbus response");
+        }
+        return;
+    }
+
+    if (pendingRequest_ == PendingRequest::WriteSingleCoil) {
+        const ModbusCodec::WriteSingleCoilResponse response =
+            ModbusCodec::decodeWriteSingleCoilResponse(readBuffer_);
+        if (response.status == ModbusCodec::ResponseStatus::Incomplete) {
+            return;
+        }
+        readBuffer_.clear();
+        pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
+        if (response.status == ModbusCodec::ResponseStatus::Ok) {
+            emit singleCoilWritten(response.address, response.value);
+        } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
+            emit singleCoilWriteFailed(
+                QString("Modbus exception code %1").arg(response.exceptionCode));
+        } else {
+            emit singleCoilWriteFailed("Malformed Modbus response");
+        }
+        return;
+    }
+
+    if (pendingRequest_ == PendingRequest::WriteMultipleCoils) {
+        const ModbusCodec::WriteMultipleCoilsResponse response =
+            ModbusCodec::decodeWriteMultipleCoilsResponse(readBuffer_);
+        if (response.status == ModbusCodec::ResponseStatus::Incomplete) {
+            return;
+        }
+        readBuffer_.clear();
+        pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
+        if (response.status == ModbusCodec::ResponseStatus::Ok) {
+            emit multipleCoilsWritten(response.startAddress, response.quantity);
+        } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
+            emit multipleCoilWriteFailed(
+                QString("Modbus exception code %1").arg(response.exceptionCode));
+        } else {
+            emit multipleCoilWriteFailed("Malformed Modbus response");
+        }
+        return;
+    }
+
     // Bytes arrived with nothing pending -- not expected by this design (one outstanding
     // request at a time, enforced by both readHoldingRegisters() and writeSingleRegister()).
     // Drop them rather than let them corrupt whatever the next real response turns out to be.
@@ -205,12 +340,18 @@ void ModbusConnection::onRequestTimeout() {
     pendingRequest_ = PendingRequest::None;
     readBuffer_.clear();
     if (timedOut == PendingRequest::ReadHoldingRegisters
-        || timedOut == PendingRequest::ReadInputRegisters) {
+        || timedOut == PendingRequest::ReadInputRegisters
+        || timedOut == PendingRequest::ReadCoils
+        || timedOut == PendingRequest::ReadDiscreteInputs) {
         emit readFailed("timed out waiting for a response");
     } else if (timedOut == PendingRequest::WriteSingleRegister) {
         emit writeFailed("timed out waiting for a response");
     } else if (timedOut == PendingRequest::WriteMultipleRegisters) {
         emit multipleWriteFailed("timed out waiting for a response");
+    } else if (timedOut == PendingRequest::WriteSingleCoil) {
+        emit singleCoilWriteFailed("timed out waiting for a response");
+    } else if (timedOut == PendingRequest::WriteMultipleCoils) {
+        emit multipleCoilWriteFailed("timed out waiting for a response");
     }
 }
 

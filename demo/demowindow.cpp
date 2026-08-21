@@ -24,6 +24,18 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+namespace {
+// Index into m_modbusFunction -- see the addItem() calls below for the exact order.
+constexpr int kFunctionReadCoils = 0;
+constexpr int kFunctionReadDiscreteInputs = 1;
+constexpr int kFunctionReadHoldingRegisters = 2;
+constexpr int kFunctionReadInputRegisters = 3;
+constexpr int kFunctionWriteSingleCoil = 4;
+constexpr int kFunctionWriteSingleRegister = 5;
+constexpr int kFunctionWriteMultipleCoils = 6;
+constexpr int kFunctionWriteMultipleRegisters = 7;
+}  // namespace
+
 DemoWindow::DemoWindow() {
     setWindowTitle("qt-app-base demo");
     resize(560, 320);
@@ -91,12 +103,24 @@ DemoWindow::DemoWindow() {
     m_modbusPollRate->setRange(100, 60000);
     m_modbusPollRate->setValue(2000);
     modbusPollFieldsLayout->addWidget(m_modbusPollRate);
-    modbusPollFieldsLayout->addWidget(new QLabel("Register Type:"));
-    m_modbusRegisterType = new QComboBox;
-    m_modbusRegisterType->addItem("Holding");
-    m_modbusRegisterType->addItem("Input");
-    modbusPollFieldsLayout->addWidget(m_modbusRegisterType);
     modbusPageLayout->addWidget(modbusPollFieldsRow);
+
+    auto *modbusFunctionRow = new QWidget;
+    auto *modbusFunctionLayout = new QHBoxLayout(modbusFunctionRow);
+    modbusFunctionLayout->setContentsMargins(0, 0, 0, 0);
+    modbusFunctionLayout->addWidget(new QLabel("Function:"));
+    m_modbusFunction = new QComboBox;
+    m_modbusFunction->addItem("01-Read Coils");
+    m_modbusFunction->addItem("02-Read Discrete Inputs");
+    m_modbusFunction->addItem("03-Read Holding Registers");
+    m_modbusFunction->addItem("04-Read Input Registers");
+    m_modbusFunction->addItem("05-Write Single Coil");
+    m_modbusFunction->addItem("06-Write Single Register");
+    m_modbusFunction->addItem("15-Write Multiple Coils");
+    m_modbusFunction->addItem("16-Write Multiple Registers");
+    m_modbusFunction->setCurrentIndex(kFunctionReadHoldingRegisters);
+    modbusFunctionLayout->addWidget(m_modbusFunction);
+    modbusPageLayout->addWidget(modbusFunctionRow);
 
     m_btnModbusConnect = new QPushButton("Connect");
     m_btnModbusDisconnect = new QPushButton("Disconnect");
@@ -106,6 +130,10 @@ DemoWindow::DemoWindow() {
     m_modbusStateLabel = new QLabel("State: Disconnected");
     modbusPageLayout->addWidget(m_modbusStateLabel);
 
+    m_modbusModeStack = new QStackedWidget;
+
+    // Page 0 -- read functions (01/02/03/04): a poll-driven table. Column set switches
+    // between register-composite (03/04) and coil ON/OFF (01/02) -- see spec.md D3.
     m_modbusTable = new QTableWidget;
     m_modbusTable->setColumnCount(7);
     m_modbusTable->setHorizontalHeaderLabels(
@@ -114,42 +142,28 @@ DemoWindow::DemoWindow() {
     m_modbusTable->verticalHeader()->setVisible(false);
     m_modbusTable->setEditTriggers(QAbstractItemView::DoubleClicked
                                    | QAbstractItemView::EditKeyPressed);
-    modbusPageLayout->addWidget(m_modbusTable);
+    m_modbusModeStack->addWidget(m_modbusTable);
 
+    // Page 1 -- write functions (05/06/15/16): one field, function-aware parsing -- see
+    // spec.md D4. Not polled -- see spec.md D5.
+    auto *modbusWritePage = new QWidget;
+    auto *modbusWritePageLayout = new QVBoxLayout(modbusWritePage);
+    modbusWritePageLayout->setContentsMargins(0, 0, 0, 0);
     auto *modbusWriteRow = new QWidget;
     auto *modbusWriteLayout = new QHBoxLayout(modbusWriteRow);
     modbusWriteLayout->setContentsMargins(0, 0, 0, 0);
-    modbusWriteLayout->addWidget(new QLabel("Write Single Register -- Address:"));
-    m_modbusWriteAddress = new QSpinBox;
-    m_modbusWriteAddress->setRange(0, 65535);
-    modbusWriteLayout->addWidget(m_modbusWriteAddress);
-    modbusWriteLayout->addWidget(new QLabel("Value:"));
-    m_modbusWriteValue = new QSpinBox;
-    m_modbusWriteValue->setRange(0, 65535);
-    modbusWriteLayout->addWidget(m_modbusWriteValue);
+    modbusWriteLayout->addWidget(new QLabel("Value(s):"));
+    m_modbusWriteValues = new QLineEdit;
+    modbusWriteLayout->addWidget(m_modbusWriteValues);
     m_btnModbusWrite = new QPushButton("Write");
     modbusWriteLayout->addWidget(m_btnModbusWrite);
-    modbusPageLayout->addWidget(modbusWriteRow);
-
+    modbusWritePageLayout->addWidget(modbusWriteRow);
     m_modbusWriteResultLabel = new QLabel("Last write: -");
-    modbusPageLayout->addWidget(m_modbusWriteResultLabel);
+    modbusWritePageLayout->addWidget(m_modbusWriteResultLabel);
+    modbusWritePageLayout->addStretch(1);
+    m_modbusModeStack->addWidget(modbusWritePage);
 
-    auto *modbusWriteMultipleRow = new QWidget;
-    auto *modbusWriteMultipleLayout = new QHBoxLayout(modbusWriteMultipleRow);
-    modbusWriteMultipleLayout->setContentsMargins(0, 0, 0, 0);
-    modbusWriteMultipleLayout->addWidget(new QLabel("Write Multiple Registers -- Address:"));
-    m_modbusWriteMultipleAddress = new QSpinBox;
-    m_modbusWriteMultipleAddress->setRange(0, 65535);
-    modbusWriteMultipleLayout->addWidget(m_modbusWriteMultipleAddress);
-    modbusWriteMultipleLayout->addWidget(new QLabel("Values (comma-separated):"));
-    m_modbusWriteMultipleValues = new QLineEdit;
-    modbusWriteMultipleLayout->addWidget(m_modbusWriteMultipleValues);
-    m_btnModbusWriteMultiple = new QPushButton("Write Multiple");
-    modbusWriteMultipleLayout->addWidget(m_btnModbusWriteMultiple);
-    modbusPageLayout->addWidget(modbusWriteMultipleRow);
-
-    m_modbusWriteMultipleResultLabel = new QLabel("Last multi-write: -");
-    modbusPageLayout->addWidget(m_modbusWriteMultipleResultLabel);
+    modbusPageLayout->addWidget(m_modbusModeStack);
     modbusPageLayout->addStretch(1);
     m_protocolStack->addWidget(modbusPage);
 
@@ -214,18 +228,24 @@ DemoWindow::DemoWindow() {
             this, [this](int) { rebuildModbusTableRows(); });
     connect(m_modbusCount, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [this](int) { rebuildModbusTableRows(); });
+    connect(m_modbusFunction, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { onModbusFunctionChanged(); });
 
     connect(&m_modbus, &ProtocolDriver::connectionStateChanged, this, [this](bool) {
         updateModbusLabels();
     });
     connect(&m_modbus, &ModbusConnection::holdingRegistersRead, this,
             [this](QVector<uint16_t> registers) {
-        updateModbusTableValues(registers);
+        updateModbusRegisterTableValues(registers);
     });
     connect(&m_modbus, &ModbusConnection::inputRegistersRead, this,
             [this](QVector<uint16_t> registers) {
-        updateModbusTableValues(registers);
+        updateModbusRegisterTableValues(registers);
     });
+    connect(&m_modbus, &ModbusConnection::coilsRead, this,
+            [this](QVector<bool> bits) { updateModbusCoilTableValues(bits); });
+    connect(&m_modbus, &ModbusConnection::discreteInputsRead, this,
+            [this](QVector<bool> bits) { updateModbusCoilTableValues(bits); });
     connect(&m_modbus, &ModbusConnection::readFailed, this, [this](const QString &) {
         clearModbusTableValues();
     });
@@ -237,47 +257,37 @@ DemoWindow::DemoWindow() {
     connect(&m_modbus, &ModbusConnection::writeFailed, this, [this](const QString &error) {
         m_modbusWriteResultLabel->setText("Last write failed -- " + error);
     });
-    connect(m_btnModbusWrite, &QPushButton::clicked, this, [this]() {
-        m_modbus.writeSingleRegister(
-            static_cast<quint8>(m_modbusSlaveId->value()),
-            static_cast<quint16>(m_modbusWriteAddress->value()),
-            static_cast<quint16>(m_modbusWriteValue->value()));
-    });
     connect(&m_modbus, &ModbusConnection::multipleRegistersWritten, this,
             [this](quint16 startAddress, quint16 quantity) {
-        m_modbusWriteMultipleResultLabel->setText(
-            QString("Last multi-write: %1 register(s) from address %2 (confirmed)")
+        m_modbusWriteResultLabel->setText(
+            QString("Last write: %1 register(s) from address %2 (confirmed)")
                 .arg(quantity).arg(startAddress));
     });
     connect(&m_modbus, &ModbusConnection::multipleWriteFailed, this,
             [this](const QString &error) {
-        m_modbusWriteMultipleResultLabel->setText("Last multi-write failed -- " + error);
+        m_modbusWriteResultLabel->setText("Last write failed -- " + error);
     });
-    connect(m_btnModbusWriteMultiple, &QPushButton::clicked, this, [this]() {
-        const QStringList parts =
-            m_modbusWriteMultipleValues->text().split(',', Qt::SkipEmptyParts);
-        QVector<quint16> values;
-        bool allValid = !parts.isEmpty() && parts.size() <= 123;
-        for (const QString &part : parts) {
-            bool ok = false;
-            const int value = part.trimmed().toInt(&ok);
-            if (!ok || value < 0 || value > 65535) {
-                allValid = false;
-                break;
-            }
-            values.append(static_cast<quint16>(value));
-        }
-        if (!allValid) {
-            m_modbusWriteMultipleResultLabel->setText(
-                "Last multi-write failed -- values must be 1-123 comma-separated integers "
-                "0-65535");
-            return;
-        }
-        m_modbus.writeMultipleRegisters(
-            static_cast<quint8>(m_modbusSlaveId->value()),
-            static_cast<quint16>(m_modbusWriteMultipleAddress->value()),
-            values);
+    connect(&m_modbus, &ModbusConnection::singleCoilWritten, this,
+            [this](quint16 address, bool value) {
+        m_modbusWriteResultLabel->setText(
+            QString("Last write: coil %1 = %2 (confirmed)")
+                .arg(address).arg(value ? "ON" : "OFF"));
     });
+    connect(&m_modbus, &ModbusConnection::singleCoilWriteFailed, this,
+            [this](const QString &error) {
+        m_modbusWriteResultLabel->setText("Last write failed -- " + error);
+    });
+    connect(&m_modbus, &ModbusConnection::multipleCoilsWritten, this,
+            [this](quint16 startAddress, quint16 quantity) {
+        m_modbusWriteResultLabel->setText(
+            QString("Last write: %1 coil(s) from address %2 (confirmed)")
+                .arg(quantity).arg(startAddress));
+    });
+    connect(&m_modbus, &ModbusConnection::multipleCoilWriteFailed, this,
+            [this](const QString &error) {
+        m_modbusWriteResultLabel->setText("Last write failed -- " + error);
+    });
+    connect(m_btnModbusWrite, &QPushButton::clicked, this, &DemoWindow::onModbusWriteClicked);
 
     connect(m_btnModbusConnect, &QPushButton::clicked, this, [this]() {
         m_modbus.connectToHost(m_modbusHost->text(), static_cast<quint16>(m_modbusPort->value()));
@@ -311,7 +321,7 @@ DemoWindow::DemoWindow() {
     });
     m_updateChecker.start();
 
-    rebuildModbusTableRows();
+    onModbusFunctionChanged();
     updateModbusLabels();
 }
 
@@ -323,20 +333,135 @@ void DemoWindow::raiseToFront() {
     activateWindow();
 }
 
+bool DemoWindow::isModbusCoilFunction() const {
+    const int index = m_modbusFunction->currentIndex();
+    return index == kFunctionReadCoils || index == kFunctionReadDiscreteInputs;
+}
+
+bool DemoWindow::isModbusWriteFunction() const {
+    return m_modbusFunction->currentIndex() >= kFunctionWriteSingleCoil;
+}
+
+void DemoWindow::onModbusFunctionChanged() {
+    m_modbusModeStack->setCurrentIndex(isModbusWriteFunction() ? 1 : 0);
+    if (!isModbusWriteFunction()) {
+        if (isModbusCoilFunction()) {
+            m_modbusTable->setColumnCount(3);
+            m_modbusTable->setHorizontalHeaderLabels({"Address", "Value", "Name"});
+        } else {
+            m_modbusTable->setColumnCount(7);
+            m_modbusTable->setHorizontalHeaderLabels(
+                {"Address", "Register Value", "Big Endian", "Little Endian",
+                 "BE Swapped", "LE Swapped", "Name"});
+        }
+        rebuildModbusTableRows();
+    }
+}
+
 void DemoWindow::pollModbusRegisters() {
     if (!m_modbus.isReady()) {
         return;
     }
-    if (m_modbusRegisterType->currentIndex() == 1) {
-        m_modbus.readInputRegisters(
-            static_cast<quint8>(m_modbusSlaveId->value()),
-            static_cast<quint16>(m_modbusRegisterStart->value()),
-            static_cast<quint16>(m_modbusCount->value()));
-    } else {
-        m_modbus.readHoldingRegisters(
-            static_cast<quint8>(m_modbusSlaveId->value()),
-            static_cast<quint16>(m_modbusRegisterStart->value()),
-            static_cast<quint16>(m_modbusCount->value()));
+    const quint8 slaveId = static_cast<quint8>(m_modbusSlaveId->value());
+    const quint16 start = static_cast<quint16>(m_modbusRegisterStart->value());
+    const quint16 count = static_cast<quint16>(m_modbusCount->value());
+    switch (m_modbusFunction->currentIndex()) {
+    case kFunctionReadCoils:
+        m_modbus.readCoils(slaveId, start, count);
+        break;
+    case kFunctionReadDiscreteInputs:
+        m_modbus.readDiscreteInputs(slaveId, start, count);
+        break;
+    case kFunctionReadHoldingRegisters:
+        m_modbus.readHoldingRegisters(slaveId, start, count);
+        break;
+    case kFunctionReadInputRegisters:
+        m_modbus.readInputRegisters(slaveId, start, count);
+        break;
+    default:
+        break;   // a write function is selected -- writes are one-shot, not polled (spec.md D5)
+    }
+}
+
+void DemoWindow::onModbusWriteClicked() {
+    const QString text = m_modbusWriteValues->text().trimmed();
+    const quint8 slaveId = static_cast<quint8>(m_modbusSlaveId->value());
+    const quint16 address = static_cast<quint16>(m_modbusRegisterStart->value());
+
+    switch (m_modbusFunction->currentIndex()) {
+    case kFunctionWriteSingleCoil: {
+        const QString normalized = text.toUpper();
+        bool state = false;
+        if (normalized == "1" || normalized == "ON") {
+            state = true;
+        } else if (normalized == "0" || normalized == "OFF") {
+            state = false;
+        } else {
+            m_modbusWriteResultLabel->setText(
+                "Last write failed -- value must be 0, 1, ON, or OFF");
+            return;
+        }
+        m_modbus.writeSingleCoil(slaveId, address, state);
+        break;
+    }
+    case kFunctionWriteSingleRegister: {
+        bool ok = false;
+        const int value = text.toInt(&ok);
+        if (!ok || value < 0 || value > 65535) {
+            m_modbusWriteResultLabel->setText(
+                "Last write failed -- value must be an integer 0-65535");
+            return;
+        }
+        m_modbus.writeSingleRegister(slaveId, address, static_cast<quint16>(value));
+        break;
+    }
+    case kFunctionWriteMultipleCoils: {
+        const QStringList parts = text.split(',', Qt::SkipEmptyParts);
+        QVector<bool> coils;
+        bool allValid = !parts.isEmpty() && parts.size() <= 1968;
+        for (const QString &part : parts) {
+            const QString trimmed = part.trimmed();
+            if (trimmed == "1") {
+                coils.append(true);
+            } else if (trimmed == "0") {
+                coils.append(false);
+            } else {
+                allValid = false;
+                break;
+            }
+        }
+        if (!allValid) {
+            m_modbusWriteResultLabel->setText(
+                "Last write failed -- values must be 1-1968 comma-separated 0/1");
+            return;
+        }
+        m_modbus.writeMultipleCoils(slaveId, address, coils);
+        break;
+    }
+    case kFunctionWriteMultipleRegisters: {
+        const QStringList parts = text.split(',', Qt::SkipEmptyParts);
+        QVector<quint16> values;
+        bool allValid = !parts.isEmpty() && parts.size() <= 123;
+        for (const QString &part : parts) {
+            bool ok = false;
+            const int value = part.trimmed().toInt(&ok);
+            if (!ok || value < 0 || value > 65535) {
+                allValid = false;
+                break;
+            }
+            values.append(static_cast<quint16>(value));
+        }
+        if (!allValid) {
+            m_modbusWriteResultLabel->setText(
+                "Last write failed -- values must be 1-123 comma-separated integers "
+                "0-65535");
+            return;
+        }
+        m_modbus.writeMultipleRegisters(slaveId, address, values);
+        break;
+    }
+    default:
+        break;   // a read function is selected -- the Write page isn't shown
     }
 }
 
@@ -344,6 +469,8 @@ void DemoWindow::rebuildModbusTableRows() {
     const int start = m_modbusRegisterStart->value();
     const int count = m_modbusCount->value();
     const QString placeholder = "-";
+    const int lastDataCol = isModbusCoilFunction() ? 1 : 5;
+    const int nameCol = isModbusCoilFunction() ? 2 : 6;
 
     m_modbusTable->setRowCount(count);
     for (int row = 0; row < count; ++row) {
@@ -351,21 +478,22 @@ void DemoWindow::rebuildModbusTableRows() {
         addressItem->setFlags(addressItem->flags() & ~Qt::ItemIsEditable);
         m_modbusTable->setItem(row, 0, addressItem);
 
-        for (int col = 1; col <= 5; ++col) {
+        for (int col = 1; col <= lastDataCol; ++col) {
             auto *item = new QTableWidgetItem(placeholder);
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
             m_modbusTable->setItem(row, col, item);
         }
 
-        // Column 6 (Name) is intentionally left editable and not recreated on every poll --
-        // see spec.md D5. It IS recreated here because a Register Start/Count change means
-        // the row now refers to a genuinely different register; keeping an old typed name
-        // pinned to a now-different address would be actively misleading.
-        m_modbusTable->setItem(row, 6, new QTableWidgetItem);
+        // The Name column is intentionally left editable and not recreated on every poll --
+        // see spec.md D5 of .plans/2026-08-19-modbus-register-table. It IS recreated here
+        // because a Register Start/Count/Function change means the row now refers to a
+        // genuinely different address, keeping an old typed name pinned to a now-different
+        // address would be actively misleading.
+        m_modbusTable->setItem(row, nameCol, new QTableWidgetItem);
     }
 }
 
-void DemoWindow::updateModbusTableValues(const QVector<uint16_t> &registers) {
+void DemoWindow::updateModbusRegisterTableValues(const QVector<uint16_t> &registers) {
     const QString placeholder = "-";
     const int rowCount = m_modbusTable->rowCount();
 
@@ -391,7 +519,8 @@ void DemoWindow::updateModbusTableValues(const QVector<uint16_t> &registers) {
             m_modbusTable->item(row, 5)->setText(QString::number(leSwapped));
         } else {
             // Last row of an odd Count -- no register N+1 exists in this read to pair with.
-            // See spec.md D3: show the placeholder, do not guess.
+            // See spec.md D3 of .plans/2026-08-19-modbus-register-table: show the
+            // placeholder, do not guess.
             for (int col = 2; col <= 5; ++col) {
                 m_modbusTable->item(row, col)->setText(placeholder);
             }
@@ -399,10 +528,18 @@ void DemoWindow::updateModbusTableValues(const QVector<uint16_t> &registers) {
     }
 }
 
+void DemoWindow::updateModbusCoilTableValues(const QVector<bool> &bits) {
+    const int rowCount = m_modbusTable->rowCount();
+    for (int row = 0; row < bits.size() && row < rowCount; ++row) {
+        m_modbusTable->item(row, 1)->setText(bits.at(row) ? "ON" : "OFF");
+    }
+}
+
 void DemoWindow::clearModbusTableValues() {
     const QString placeholder = "-";
+    const int lastDataCol = isModbusCoilFunction() ? 1 : 5;
     for (int row = 0; row < m_modbusTable->rowCount(); ++row) {
-        for (int col = 1; col <= 5; ++col) {
+        for (int col = 1; col <= lastDataCol; ++col) {
             m_modbusTable->item(row, col)->setText(placeholder);
         }
     }
