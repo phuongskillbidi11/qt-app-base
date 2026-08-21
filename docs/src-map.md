@@ -152,6 +152,39 @@ Builds
 standalone within `qt-app-base` itself (`add_feature_module`); consumed by
 `demo/demowindow.cpp`'s live Modbus group.
 
+### `src/features/c3protocol/` — a third `ProtocolDriver` conformer
+
+ZKTeco C3/InBio access-control panel wire protocol (TCP port 4370) -- reverse-engineered
+(no official ZKTeco spec exists), learned by reading `zkaccess-c3-py` (GPL-3.0) as
+documentation only, then written from scratch in C++. `c3_connection` (`QTcpSocket` +
+`ConnectionState`, implements `ProtocolDriver` -- "ready" follows an application-level
+CONNECT_SESSION handshake, like `mq` and unlike `modbus`), `c3_codec` (frame CRC-16/ARC +
+CONNECT_SESSION/DISCONNECT encode/decode, pure). Scoped to exactly the session handshake --
+no device data, no control commands, no file I/O yet; see
+`.plans/2026-08-21-c3-protocol-session/spec.md` for why. Builds standalone within
+`qt-app-base` itself (`add_feature_module`), not consumed by any app yet.
+Also sends CONTROL commands (door/aux output, cancel alarm, restart, normal-open state) via
+`C3Connection`'s six control methods -- door/aux *output* commands physically actuate real
+hardware; see `.plans/2026-08-21-c3-control/spec.md` for the safety boundary this feature's
+own live testing follows (only CANCEL_ALARM and one confirmed, short-duration door unlock are
+ever exercised against real hardware automatically -- RESTART_DEVICE and the normal-open-state
+change are encode-only, never sent live without a separate, explicit go-ahead).
+Also reads any table via `DATATABLE_CFG` + `GETDATA` (kv-text table-schema discovery plus
+binary packed records) via `C3Connection::requestTableData(tableName)` -- proven against
+`user`, `transaction`, and `template`; see `.plans/2026-08-21-c3-getdata-user-table/spec.md`
+and `.plans/2026-08-21-c3-transaction-template-tables/spec.md`. No `templatev10` (its `B`-typed
+field is unhandled), no writes yet.
+Also reads the real-time event/door-alarm log (`RTLOG_BINARY`, 16-byte fixed binary records,
+with an automatic fallback to `RTLOG_KEYVALUE` text mode) via
+`C3Connection::requestRealtimeLog()` -- a separate, simpler command family from
+`DATATABLE_CFG`/`GETDATA`, needing no schema discovery; see
+`.plans/2026-08-21-c3-rtlog/spec.md`.
+Also reads device parameters (`GETPARAM` -- serial number, firmware version, device name,
+door/aux counts, or any other named parameter the panel supports) via
+`C3Connection::requestDeviceParams(names)`, reusing the same kv-text parser as
+`DATATABLE_CFG`/`RTLOG_KEYVALUE`; see `.plans/2026-08-21-c3-getparam/spec.md`. Read-only --
+no parameter-write command implemented yet.
+
 ---
 
 ## Adding a feature

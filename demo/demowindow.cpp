@@ -35,6 +35,11 @@ constexpr int kFunctionWriteSingleCoil = 4;
 constexpr int kFunctionWriteSingleRegister = 5;
 constexpr int kFunctionWriteMultipleCoils = 6;
 constexpr int kFunctionWriteMultipleRegisters = 7;
+constexpr int kC3ViewDeviceInfo = 0;
+constexpr int kC3ViewUsers = 1;
+constexpr int kC3ViewTemplates = 2;
+constexpr int kC3ViewRealtimeLog = 3;
+constexpr int kC3ViewControl = 4;
 }  // namespace
 
 DemoWindow::DemoWindow() {
@@ -153,6 +158,109 @@ DemoWindow::DemoWindow() {
     rabbitPageLayout->addStretch(1);
     m_protocolStack->addWidget(rabbitPage);
 
+    m_protocolCombo->addItem("C3 Protocol (ZKTeco)");
+
+    // Page 2 -- C3 Protocol (ZKTeco). Mirrors the Modbus page's own shape: one connect row,
+    // one mode dropdown, a shared table for the three fetch-once views, a dedicated page each
+    // for the continuously-polled Real-time Log and for Control (never a table) -- see
+    // spec.md D1 of .plans/2026-08-21-c3-demo-ui.
+    auto *c3Page = new QWidget;
+    auto *c3PageLayout = new QVBoxLayout(c3Page);
+    c3PageLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *c3ConnectRow = new QWidget;
+    auto *c3ConnectLayout = new QHBoxLayout(c3ConnectRow);
+    c3ConnectLayout->setContentsMargins(0, 0, 0, 0);
+    c3ConnectLayout->addWidget(new QLabel("Host:"));
+    m_c3Host = new QLineEdit("192.168.2.163");
+    c3ConnectLayout->addWidget(m_c3Host);
+    c3ConnectLayout->addWidget(new QLabel("Port:"));
+    m_c3Port = new QSpinBox;
+    m_c3Port->setRange(1, 65535);
+    m_c3Port->setValue(4370);
+    c3ConnectLayout->addWidget(m_c3Port);
+    m_btnC3Connect = new QPushButton("Connect");
+    c3ConnectLayout->addWidget(m_btnC3Connect);
+    c3PageLayout->addWidget(c3ConnectRow);
+
+    auto *c3ViewRow = new QWidget;
+    auto *c3ViewLayout = new QHBoxLayout(c3ViewRow);
+    c3ViewLayout->setContentsMargins(0, 0, 0, 0);
+    c3ViewLayout->addWidget(new QLabel("View:"));
+    m_c3View = new QComboBox;
+    m_c3View->addItem("Device Info");
+    m_c3View->addItem("Users");
+    m_c3View->addItem("Templates");
+    m_c3View->addItem("Real-time Log");
+    m_c3View->addItem("Control");
+    c3ViewLayout->addWidget(m_c3View);
+    c3PageLayout->addWidget(c3ViewRow);
+
+    m_c3StateLabel = new QLabel("State: Disconnected");
+    c3PageLayout->addWidget(m_c3StateLabel);
+
+    m_c3ViewStack = new QStackedWidget;
+
+    // Stack page 0 -- Device Info / Users / Templates share one Refresh button + table.
+    auto *c3TablePage = new QWidget;
+    auto *c3TablePageLayout = new QVBoxLayout(c3TablePage);
+    c3TablePageLayout->setContentsMargins(0, 0, 0, 0);
+    m_btnC3Refresh = new QPushButton("Refresh");
+    c3TablePageLayout->addWidget(m_btnC3Refresh);
+    m_c3Table = new QTableWidget;
+    m_c3Table->verticalHeader()->setVisible(false);
+    m_c3Table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    c3TablePageLayout->addWidget(m_c3Table);
+    m_c3ViewStack->addWidget(c3TablePage);
+
+    // Stack page 1 -- Real-time Log. Continuously polled, append-only -- see spec.md D1.
+    auto *c3LogPage = new QWidget;
+    auto *c3LogPageLayout = new QVBoxLayout(c3LogPage);
+    c3LogPageLayout->setContentsMargins(0, 0, 0, 0);
+    m_c3LogTable = new QTableWidget;
+    m_c3LogTable->setColumnCount(2);
+    m_c3LogTable->setHorizontalHeaderLabels({"Time", "Card No"});
+    m_c3LogTable->verticalHeader()->setVisible(false);
+    m_c3LogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    c3LogPageLayout->addWidget(m_c3LogTable);
+    m_c3ViewStack->addWidget(c3LogPage);
+
+    // Stack page 2 -- Control. Deliberately never a table -- door/aux OUTPUT and
+    // CANCEL_ALARM only; no Restart Device or Normal-Open-State control anywhere in this UI
+    // (spec.md D1/D4 -- matches the backend CONTROL phase's own user-confirmed safety
+    // boundary).
+    auto *c3ControlPage = new QWidget;
+    auto *c3ControlPageLayout = new QVBoxLayout(c3ControlPage);
+    c3ControlPageLayout->setContentsMargins(0, 0, 0, 0);
+    auto *c3ControlRow = new QWidget;
+    auto *c3ControlRowLayout = new QHBoxLayout(c3ControlRow);
+    c3ControlRowLayout->setContentsMargins(0, 0, 0, 0);
+    c3ControlRowLayout->addWidget(new QLabel("Door Number:"));
+    m_c3ControlDoor = new QSpinBox;
+    m_c3ControlDoor->setRange(1, 4);
+    m_c3ControlDoor->setValue(1);
+    c3ControlRowLayout->addWidget(m_c3ControlDoor);
+    c3ControlRowLayout->addWidget(new QLabel("Duration (s):"));
+    m_c3ControlDuration = new QSpinBox;
+    // 1-254 only -- 255 (stay open indefinitely) and 0 (close) are deliberately unreachable
+    // from this UI; see spec.md D4. This button only ever performs a timed, self-closing
+    // unlock.
+    m_c3ControlDuration->setRange(1, 254);
+    m_c3ControlDuration->setValue(3);
+    c3ControlRowLayout->addWidget(m_c3ControlDuration);
+    m_btnC3DoorOpen = new QPushButton("Open Door");
+    c3ControlRowLayout->addWidget(m_btnC3DoorOpen);
+    m_btnC3CancelAlarm = new QPushButton("Cancel Alarm");
+    c3ControlRowLayout->addWidget(m_btnC3CancelAlarm);
+    c3ControlPageLayout->addWidget(c3ControlRow);
+    m_c3ControlResultLabel = new QLabel("Last result: -");
+    c3ControlPageLayout->addWidget(m_c3ControlResultLabel);
+    c3ControlPageLayout->addStretch(1);
+    m_c3ViewStack->addWidget(c3ControlPage);
+
+    c3PageLayout->addWidget(m_c3ViewStack);
+    m_protocolStack->addWidget(c3Page);
+
     layout->addWidget(m_protocolStack);
 
     connect(m_protocolCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -267,6 +375,84 @@ DemoWindow::DemoWindow() {
     connect(m_btnModbusConnect, &QPushButton::clicked, this,
             &DemoWindow::onModbusConnectClicked);
 
+    connect(m_c3View, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { onC3ViewChanged(); });
+    connect(m_btnC3Refresh, &QPushButton::clicked, this, [this]() { refreshC3View(); });
+    connect(m_btnC3Connect, &QPushButton::clicked, this, &DemoWindow::onC3ConnectClicked);
+    connect(m_btnC3DoorOpen, &QPushButton::clicked, this, [this]() {
+        if (!m_c3.isReady()) return;
+        m_c3.controlDoorOutput(static_cast<uint8_t>(m_c3ControlDoor->value()),
+                               static_cast<uint8_t>(m_c3ControlDuration->value()));
+        m_c3ControlResultLabel->setText("Last result: sent, waiting...");
+    });
+    connect(m_btnC3CancelAlarm, &QPushButton::clicked, this, [this]() {
+        if (!m_c3.isReady()) return;
+        m_c3.cancelAlarm();
+        m_c3ControlResultLabel->setText("Last result: sent, waiting...");
+    });
+
+    connect(&m_c3, &ProtocolDriver::connectionStateChanged, this, [this](bool) {
+        updateC3Labels();
+    });
+    connect(&m_c3, &C3Connection::deviceParamsReceived, this, [this](QVariantMap values) {
+        rebuildC3TableForKeyValueMap(values);
+    });
+    connect(&m_c3, &C3Connection::deviceParamsFailed, this, [this](QString error) {
+        m_c3Table->setColumnCount(1);
+        m_c3Table->setHorizontalHeaderLabels({"Status"});
+        m_c3Table->setRowCount(1);
+        m_c3Table->setItem(0, 0, new QTableWidgetItem("Failed: " + error));
+    });
+    connect(&m_c3, &C3Connection::tableDataReceived, this,
+            [this](QString /*tableName*/, QVector<QVariantMap> records) {
+        rebuildC3TableForRecords(records);
+    });
+    connect(&m_c3, &C3Connection::tableDataFailed, this,
+            [this](QString /*tableName*/, QString error) {
+        m_c3Table->setColumnCount(1);
+        m_c3Table->setHorizontalHeaderLabels({"Status"});
+        m_c3Table->setRowCount(1);
+        m_c3Table->setItem(0, 0, new QTableWidgetItem("Failed: " + error));
+    });
+    connect(&m_c3, &C3Connection::realtimeLogReceived, this,
+            [this](QVector<C3Codec::RtLogRecord> records) {
+        // Card-swipe events only -- see spec.md D5. DoorAlarmStatus records and any Event
+        // record with no card number (e.g. a PIN-only entry) are dropped here, in the demo's
+        // own display layer; C3Connection keeps emitting every decoded record unchanged.
+        for (const C3Codec::RtLogRecord &record : records) {
+            if (record.kind != C3Codec::RtLogRecordKind::Event || record.cardNo == 0) {
+                continue;
+            }
+            appendC3LogRow(QString::number(record.timeSecond), QString::number(record.cardNo));
+        }
+    });
+    connect(&m_c3, &C3Connection::realtimeLogKeyValueReceived, this,
+            [this](QVector<QVariantMap> records) {
+        // Card-swipe events only -- see spec.md D5. A record with no "cardno" key, or one
+        // that parses to zero, is dropped here, in the demo's own display layer;
+        // C3Connection keeps emitting every decoded record unchanged.
+        for (const QVariantMap &record : records) {
+            bool ok = false;
+            const qulonglong cardNo = record.value("cardno").toULongLong(&ok);
+            if (!ok || cardNo == 0) {
+                continue;
+            }
+            const QString time = record.value("time").toString();
+            appendC3LogRow(time.isEmpty() ? "-" : time, QString::number(cardNo));
+        }
+    });
+    connect(&m_c3, &C3Connection::controlAcknowledged, this, [this]() {
+        m_c3ControlResultLabel->setText("Last result: acknowledged");
+    });
+    connect(&m_c3, &C3Connection::controlFailed, this, [this](QString error) {
+        m_c3ControlResultLabel->setText("Last result: failed -- " + error);
+    });
+
+    m_c3LogPollTimer = new QTimer(this);
+    m_c3LogPollTimer->setInterval(2000);
+    connect(m_c3LogPollTimer, &QTimer::timeout, this, &DemoWindow::pollC3RealtimeLog);
+    m_c3LogPollTimer->start();
+
     connect(&m_updateChecker, &UpdateChecker::updateAvailable,
             &m_updateInstaller, &UpdateInstaller::download);
     connect(&m_updateInstaller, &UpdateInstaller::readyToInstall, this,
@@ -292,6 +478,8 @@ DemoWindow::DemoWindow() {
 
     onModbusFunctionChanged();
     updateModbusLabels();
+    onC3ViewChanged();
+    updateC3Labels();
 }
 
 void DemoWindow::raiseToFront() {
@@ -572,5 +760,114 @@ void DemoWindow::updateModbusLabels() {
     m_btnModbusConnect->setText(ready ? "Disconnect" : "Connect");
     if (!ready) {
         clearModbusTableValues();
+    }
+}
+
+void DemoWindow::updateC3Labels() {
+    const bool ready = m_c3.isReady();
+    m_c3StateLabel->setText(QString("State: ") + (ready ? "Connected" : "Disconnected"));
+    m_btnC3Connect->setText(ready ? "Disconnect" : "Connect");
+    if (!ready) {
+        m_c3Table->setRowCount(0);
+        m_c3LogTable->setRowCount(0);
+        m_c3ControlResultLabel->setText("Last result: -");
+    } else {
+        refreshC3View();
+    }
+}
+
+void DemoWindow::onC3ConnectClicked() {
+    if (m_c3.isReady()) {
+        m_c3.disconnectNow();
+    } else {
+        m_c3.connectToHost(m_c3Host->text(), static_cast<quint16>(m_c3Port->value()));
+    }
+    updateC3Labels();
+}
+
+void DemoWindow::onC3ViewChanged() {
+    const int index = m_c3View->currentIndex();
+    int stackIndex = 0;
+    if (index == kC3ViewRealtimeLog) {
+        stackIndex = 1;
+    } else if (index == kC3ViewControl) {
+        stackIndex = 2;
+    }
+    m_c3ViewStack->setCurrentIndex(stackIndex);
+    if (stackIndex == 0) {
+        refreshC3View();
+    }
+}
+
+void DemoWindow::refreshC3View() {
+    if (!m_c3.isReady()) {
+        return;
+    }
+    switch (m_c3View->currentIndex()) {
+    case kC3ViewDeviceInfo:
+        m_c3.requestDeviceParams({"~SerialNumber", "FirmVer", "DeviceName", "LockCount",
+                                  "AuxInCount", "AuxOutCount"});
+        break;
+    case kC3ViewUsers:
+        m_c3.requestTableData("user");
+        break;
+    case kC3ViewTemplates:
+        m_c3.requestTableData("template");
+        break;
+    default:
+        break;   // Real-time Log and Control are not fetched this way
+    }
+}
+
+void DemoWindow::pollC3RealtimeLog() {
+    if (!m_c3.isReady() || m_c3View->currentIndex() != kC3ViewRealtimeLog) {
+        return;
+    }
+    m_c3.requestRealtimeLog();
+}
+
+void DemoWindow::rebuildC3TableForKeyValueMap(const QVariantMap &values) {
+    m_c3Table->setColumnCount(2);
+    m_c3Table->setHorizontalHeaderLabels({"Parameter", "Value"});
+    m_c3Table->setRowCount(values.size());
+    int row = 0;
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it, ++row) {
+        m_c3Table->setItem(row, 0, new QTableWidgetItem(it.key()));
+        m_c3Table->setItem(row, 1, new QTableWidgetItem(it.value().toString()));
+    }
+}
+
+void DemoWindow::rebuildC3TableForRecords(const QVector<QVariantMap> &records) {
+    if (records.isEmpty()) {
+        m_c3Table->setColumnCount(1);
+        m_c3Table->setHorizontalHeaderLabels({"Status"});
+        m_c3Table->setRowCount(1);
+        m_c3Table->setItem(0, 0, new QTableWidgetItem("No records returned by the panel"));
+        return;
+    }
+    const QStringList keys = records.first().keys();
+    m_c3Table->setColumnCount(keys.size());
+    m_c3Table->setHorizontalHeaderLabels(keys);
+    m_c3Table->setRowCount(records.size());
+    for (int row = 0; row < records.size(); ++row) {
+        for (int col = 0; col < keys.size(); ++col) {
+            m_c3Table->setItem(row, col,
+                new QTableWidgetItem(records.at(row).value(keys.at(col)).toString()));
+        }
+    }
+}
+
+void DemoWindow::appendC3LogRow(const QString &time, const QString &details) {
+    // Append-only, capped -- see spec.md's own Real-time Log design (D1): this view
+    // behaves like an actual log, not a snapshot. The cap prevents unbounded growth on a
+    // long-running HMI display.
+    constexpr int kMaxLogRows = 500;
+    const int row = m_c3LogTable->rowCount();
+    m_c3LogTable->insertRow(row);
+    m_c3LogTable->setItem(row, 0, new QTableWidgetItem(time));
+    m_c3LogTable->setItem(row, 1, new QTableWidgetItem(details));
+    m_c3LogTable->scrollToBottom();
+    while (m_c3LogTable->rowCount() > kMaxLogRows) {
+        m_c3LogTable->removeRow(0);
     }
 }

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QVariant>
 
+#include "c3_connection.h"
 #include "modbus_connection.h"
 #include "update_checker.h"
 #include "update_installer.h"
@@ -44,6 +46,14 @@ private:
     void onModbusTableDoubleClicked(int row, int column);
     bool isModbusCoilFunction() const;
     bool isModbusWriteFunction() const;
+    void updateC3Labels();
+    void onC3ConnectClicked();
+    void onC3ViewChanged();
+    void refreshC3View();
+    void pollC3RealtimeLog();
+    void rebuildC3TableForKeyValueMap(const QVariantMap &values);
+    void rebuildC3TableForRecords(const QVector<QVariantMap> &records);
+    void appendC3LogRow(const QString &time, const QString &details);
 
     Worker m_worker;
     UpdateChecker m_updateChecker;
@@ -65,6 +75,23 @@ private:
     QLabel *m_modbusStateLabel = nullptr;
     QLabel *m_modbusWriteResultLabel = nullptr;
     QTableWidget *m_modbusTable = nullptr;
+
+    C3Connection m_c3;
+    QLineEdit *m_c3Host = nullptr;
+    QSpinBox *m_c3Port = nullptr;
+    QPushButton *m_btnC3Connect = nullptr;
+    QComboBox *m_c3View = nullptr;
+    QLabel *m_c3StateLabel = nullptr;
+    QStackedWidget *m_c3ViewStack = nullptr;
+    QPushButton *m_btnC3Refresh = nullptr;
+    QTableWidget *m_c3Table = nullptr;
+    QTableWidget *m_c3LogTable = nullptr;
+    QTimer *m_c3LogPollTimer = nullptr;
+    QSpinBox *m_c3ControlDoor = nullptr;
+    QSpinBox *m_c3ControlDuration = nullptr;
+    QPushButton *m_btnC3DoorOpen = nullptr;
+    QPushButton *m_btnC3CancelAlarm = nullptr;
+    QLabel *m_c3ControlResultLabel = nullptr;
 
     QLabel *m_workerLabel = nullptr;
 };
