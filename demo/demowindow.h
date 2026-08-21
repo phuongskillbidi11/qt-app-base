@@ -54,6 +54,7 @@ private:
     QSpinBox *m_modbusRegisterStart = nullptr;
     QSpinBox *m_modbusCount = nullptr;
     QSpinBox *m_modbusPollRate = nullptr;
+    QComboBox *m_modbusRegisterType = nullptr;
     QSpinBox *m_modbusWriteAddress = nullptr;
     QSpinBox *m_modbusWriteValue = nullptr;
     QPushButton *m_btnModbusWrite = nullptr;

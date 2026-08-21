@@ -42,6 +42,7 @@ public:
     // already outstanding -- see spec.md D2 of
     // .plans/2026-08-20-modbus-write-single-register.
     void readHoldingRegisters(quint8 unitId, quint16 startAddress, quint16 quantity);
+    void readInputRegisters(quint8 unitId, quint16 startAddress, quint16 quantity);
     void writeSingleRegister(quint8 unitId, quint16 address, quint16 value);
     // `values` must be 1-123 entries -- validated by the caller (the demo UI), not here;
     // see spec.md D3 of .plans/2026-08-21-modbus-write-multiple-registers.
@@ -53,6 +54,7 @@ public:
 
 signals:
     void holdingRegistersRead(QVector<uint16_t> registers);
+    void inputRegistersRead(QVector<uint16_t> registers);
     void readFailed(QString error);
     void singleRegisterWritten(quint16 address, quint16 value);
     void writeFailed(QString error);
@@ -61,7 +63,7 @@ signals:
 
 private:
     enum class PendingRequest { None, ReadHoldingRegisters, WriteSingleRegister,
-                                 WriteMultipleRegisters };
+                                 WriteMultipleRegisters, ReadInputRegisters };
 
     void onSocketReadyRead();
     void onRequestTimeout();

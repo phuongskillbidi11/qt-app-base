@@ -73,6 +73,25 @@ int main() {
               && writeException.exceptionCode == 2,
           "decode returns Exception with the known exception code for a write");
 
+    ModbusCodec::ReadInputRegistersRequest inputRequest;
+    inputRequest.transactionId = 1;
+    inputRequest.unitId = 1;
+    inputRequest.startAddress = 0;
+    inputRequest.quantity = 2;
+    const QByteArray encodedInput = ModbusCodec::encodeReadInputRegistersRequest(inputRequest);
+    check(encodedInput == QByteArray::fromHex("000100000006010400000002"),
+          "encode produces the known Read Input Registers request");
+
+    const ModbusCodec::ReadInputRegistersResponse inputValid =
+        ModbusCodec::decodeReadInputRegistersResponse(
+            QByteArray::fromHex("000100000007010404006400c8"));
+    const bool inputRegistersMatch = inputValid.registers.size() == 2
+        && inputValid.registers.at(0) == 100 && inputValid.registers.at(1) == 200;
+    check(inputValid.status == ModbusCodec::ResponseStatus::Ok
+              && inputValid.transactionId == 1
+              && inputRegistersMatch,
+          "decode returns Ok with the known Input Register values");
+
     ModbusCodec::WriteMultipleRegistersRequest writeMultipleRequest;
     writeMultipleRequest.transactionId = 1;
     writeMultipleRequest.unitId = 1;

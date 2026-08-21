@@ -67,6 +67,20 @@ void ModbusConnection::readHoldingRegisters(quint8 unitId, quint16 startAddress,
     requestTimer_.start(requestTimeoutMs_);
 }
 
+void ModbusConnection::readInputRegisters(quint8 unitId, quint16 startAddress, quint16 quantity) {
+    if (!isReady() || pendingRequest_ != PendingRequest::None) {
+        return;
+    }
+    ModbusCodec::ReadInputRegistersRequest request;
+    request.transactionId = nextTransactionId_++;
+    request.unitId = unitId;
+    request.startAddress = startAddress;
+    request.quantity = quantity;
+    pendingRequest_ = PendingRequest::ReadInputRegisters;
+    socket_.write(ModbusCodec::encodeReadInputRegistersRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
+}
+
 void ModbusConnection::writeSingleRegister(quint8 unitId, quint16 address, quint16 value) {
     if (!isReady() || pendingRequest_ != PendingRequest::None) {
         return;
@@ -110,6 +124,25 @@ void ModbusConnection::onSocketReadyRead() {
         requestTimer_.stop();
         if (response.status == ModbusCodec::ResponseStatus::Ok) {
             emit holdingRegistersRead(response.registers);
+        } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
+            emit readFailed(QString("Modbus exception code %1").arg(response.exceptionCode));
+        } else {
+            emit readFailed("Malformed Modbus response");
+        }
+        return;
+    }
+
+    if (pendingRequest_ == PendingRequest::ReadInputRegisters) {
+        const ModbusCodec::ReadInputRegistersResponse response =
+            ModbusCodec::decodeReadInputRegistersResponse(readBuffer_);
+        if (response.status == ModbusCodec::ResponseStatus::Incomplete) {
+            return;   // wait for more bytes
+        }
+        readBuffer_.clear();
+        pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
+        if (response.status == ModbusCodec::ResponseStatus::Ok) {
+            emit inputRegistersRead(response.registers);
         } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
             emit readFailed(QString("Modbus exception code %1").arg(response.exceptionCode));
         } else {
@@ -171,7 +204,8 @@ void ModbusConnection::onRequestTimeout() {
     const PendingRequest timedOut = pendingRequest_;
     pendingRequest_ = PendingRequest::None;
     readBuffer_.clear();
-    if (timedOut == PendingRequest::ReadHoldingRegisters) {
+    if (timedOut == PendingRequest::ReadHoldingRegisters
+        || timedOut == PendingRequest::ReadInputRegisters) {
         emit readFailed("timed out waiting for a response");
     } else if (timedOut == PendingRequest::WriteSingleRegister) {
         emit writeFailed("timed out waiting for a response");

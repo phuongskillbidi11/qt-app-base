@@ -90,4 +90,26 @@ struct WriteMultipleRegistersResponse {
 // pymodbus client/server exchange, not assumed.
 WriteMultipleRegistersResponse decodeWriteMultipleRegistersResponse(const QByteArray &data);
 
+struct ReadInputRegistersRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t startAddress = 0;
+    uint16_t quantity = 1;   // valid range 1-125 per the Modbus specification
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket.
+QByteArray encodeReadInputRegistersRequest(const ReadInputRegistersRequest &request);
+
+struct ReadInputRegistersResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;      // meaningful only when status == Exception
+    QVector<uint16_t> registers;    // meaningful only when status == Ok
+};
+
+// Decodes exactly one Read Input Registers response frame from the front of `data`. Byte-
+// identical shape to Read Holding Registers -- only the function code differs -- verified
+// directly against a real pymodbus server, not assumed.
+ReadInputRegistersResponse decodeReadInputRegistersResponse(const QByteArray &data);
+
 }  // namespace ModbusCodec

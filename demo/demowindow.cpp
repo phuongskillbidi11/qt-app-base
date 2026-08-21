@@ -91,6 +91,11 @@ DemoWindow::DemoWindow() {
     m_modbusPollRate->setRange(100, 60000);
     m_modbusPollRate->setValue(2000);
     modbusPollFieldsLayout->addWidget(m_modbusPollRate);
+    modbusPollFieldsLayout->addWidget(new QLabel("Register Type:"));
+    m_modbusRegisterType = new QComboBox;
+    m_modbusRegisterType->addItem("Holding");
+    m_modbusRegisterType->addItem("Input");
+    modbusPollFieldsLayout->addWidget(m_modbusRegisterType);
     modbusPageLayout->addWidget(modbusPollFieldsRow);
 
     m_btnModbusConnect = new QPushButton("Connect");
@@ -217,6 +222,10 @@ DemoWindow::DemoWindow() {
             [this](QVector<uint16_t> registers) {
         updateModbusTableValues(registers);
     });
+    connect(&m_modbus, &ModbusConnection::inputRegistersRead, this,
+            [this](QVector<uint16_t> registers) {
+        updateModbusTableValues(registers);
+    });
     connect(&m_modbus, &ModbusConnection::readFailed, this, [this](const QString &) {
         clearModbusTableValues();
     });
@@ -318,10 +327,17 @@ void DemoWindow::pollModbusRegisters() {
     if (!m_modbus.isReady()) {
         return;
     }
-    m_modbus.readHoldingRegisters(
-        static_cast<quint8>(m_modbusSlaveId->value()),
-        static_cast<quint16>(m_modbusRegisterStart->value()),
-        static_cast<quint16>(m_modbusCount->value()));
+    if (m_modbusRegisterType->currentIndex() == 1) {
+        m_modbus.readInputRegisters(
+            static_cast<quint8>(m_modbusSlaveId->value()),
+            static_cast<quint16>(m_modbusRegisterStart->value()),
+            static_cast<quint16>(m_modbusCount->value()));
+    } else {
+        m_modbus.readHoldingRegisters(
+            static_cast<quint8>(m_modbusSlaveId->value()),
+            static_cast<quint16>(m_modbusRegisterStart->value()),
+            static_cast<quint16>(m_modbusCount->value()));
+    }
 }
 
 void DemoWindow::rebuildModbusTableRows() {
