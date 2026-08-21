@@ -7,6 +7,7 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QComboBox>
+#include <QDialog>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -55,7 +56,8 @@ DemoWindow::DemoWindow() {
     m_protocolStack = new QStackedWidget;
 
     // Page 0 -- Modbus TCP. Identical to Step 4c's group, just moved into its own page's
-    // layout instead of the window's top-level layout -- see spec.md R1.
+    // layout instead of the window's top-level layout -- see spec.md R1 of
+    // .plans/2026-08-18-protocol-dropdown.
     auto *modbusPage = new QWidget;
     auto *modbusPageLayout = new QVBoxLayout(modbusPage);
     modbusPageLayout->setContentsMargins(0, 0, 0, 0);
@@ -78,6 +80,8 @@ DemoWindow::DemoWindow() {
     m_modbusTimeout->setRange(100, 30000);
     m_modbusTimeout->setValue(1000);
     modbusFieldsLayout->addWidget(m_modbusTimeout);
+    m_btnModbusConnect = new QPushButton("Connect");
+    modbusFieldsLayout->addWidget(m_btnModbusConnect);
     modbusPageLayout->addWidget(modbusFieldsRow);
 
     auto *modbusPollFieldsRow = new QWidget;
@@ -103,12 +107,7 @@ DemoWindow::DemoWindow() {
     m_modbusPollRate->setRange(100, 60000);
     m_modbusPollRate->setValue(2000);
     modbusPollFieldsLayout->addWidget(m_modbusPollRate);
-    modbusPageLayout->addWidget(modbusPollFieldsRow);
-
-    auto *modbusFunctionRow = new QWidget;
-    auto *modbusFunctionLayout = new QHBoxLayout(modbusFunctionRow);
-    modbusFunctionLayout->setContentsMargins(0, 0, 0, 0);
-    modbusFunctionLayout->addWidget(new QLabel("Function:"));
+    modbusPollFieldsLayout->addWidget(new QLabel("Function:"));
     m_modbusFunction = new QComboBox;
     m_modbusFunction->addItem("01-Read Coils");
     m_modbusFunction->addItem("02-Read Discrete Inputs");
@@ -119,21 +118,18 @@ DemoWindow::DemoWindow() {
     m_modbusFunction->addItem("15-Write Multiple Coils");
     m_modbusFunction->addItem("16-Write Multiple Registers");
     m_modbusFunction->setCurrentIndex(kFunctionReadHoldingRegisters);
-    modbusFunctionLayout->addWidget(m_modbusFunction);
-    modbusPageLayout->addWidget(modbusFunctionRow);
-
-    m_btnModbusConnect = new QPushButton("Connect");
-    m_btnModbusDisconnect = new QPushButton("Disconnect");
-    modbusPageLayout->addWidget(m_btnModbusConnect);
-    modbusPageLayout->addWidget(m_btnModbusDisconnect);
+    modbusPollFieldsLayout->addWidget(m_modbusFunction);
+    modbusPageLayout->addWidget(modbusPollFieldsRow);
 
     m_modbusStateLabel = new QLabel("State: Disconnected");
     modbusPageLayout->addWidget(m_modbusStateLabel);
 
-    m_modbusModeStack = new QStackedWidget;
+    m_modbusWriteResultLabel = new QLabel("Last write: -");
+    modbusPageLayout->addWidget(m_modbusWriteResultLabel);
 
-    // Page 0 -- read functions (01/02/03/04): a poll-driven table. Column set switches
-    // between register-composite (03/04) and coil ON/OFF (01/02) -- see spec.md D3.
+    // Read functions (01/02/03/04) poll into this table; write functions (05/06/15/16)
+    // repurpose it as a plain address picker -- double-click a row to open the write
+    // dialog for that address (spec.md D3), no dedicated write page taking up space.
     m_modbusTable = new QTableWidget;
     m_modbusTable->setColumnCount(7);
     m_modbusTable->setHorizontalHeaderLabels(
@@ -142,29 +138,7 @@ DemoWindow::DemoWindow() {
     m_modbusTable->verticalHeader()->setVisible(false);
     m_modbusTable->setEditTriggers(QAbstractItemView::DoubleClicked
                                    | QAbstractItemView::EditKeyPressed);
-    m_modbusModeStack->addWidget(m_modbusTable);
-
-    // Page 1 -- write functions (05/06/15/16): one field, function-aware parsing -- see
-    // spec.md D4. Not polled -- see spec.md D5.
-    auto *modbusWritePage = new QWidget;
-    auto *modbusWritePageLayout = new QVBoxLayout(modbusWritePage);
-    modbusWritePageLayout->setContentsMargins(0, 0, 0, 0);
-    auto *modbusWriteRow = new QWidget;
-    auto *modbusWriteLayout = new QHBoxLayout(modbusWriteRow);
-    modbusWriteLayout->setContentsMargins(0, 0, 0, 0);
-    modbusWriteLayout->addWidget(new QLabel("Value(s):"));
-    m_modbusWriteValues = new QLineEdit;
-    modbusWriteLayout->addWidget(m_modbusWriteValues);
-    m_btnModbusWrite = new QPushButton("Write");
-    modbusWriteLayout->addWidget(m_btnModbusWrite);
-    modbusWritePageLayout->addWidget(modbusWriteRow);
-    m_modbusWriteResultLabel = new QLabel("Last write: -");
-    modbusWritePageLayout->addWidget(m_modbusWriteResultLabel);
-    modbusWritePageLayout->addStretch(1);
-    m_modbusModeStack->addWidget(modbusWritePage);
-
-    modbusPageLayout->addWidget(m_modbusModeStack);
-    modbusPageLayout->addStretch(1);
+    modbusPageLayout->addWidget(m_modbusTable);
     m_protocolStack->addWidget(modbusPage);
 
     // Page 1 -- RabbitMQ, placeholder only. Not wired -- see spec.md's build-dependency
@@ -230,6 +204,8 @@ DemoWindow::DemoWindow() {
             this, [this](int) { rebuildModbusTableRows(); });
     connect(m_modbusFunction, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) { onModbusFunctionChanged(); });
+    connect(m_modbusTable, &QTableWidget::cellDoubleClicked,
+            this, &DemoWindow::onModbusTableDoubleClicked);
 
     connect(&m_modbus, &ProtocolDriver::connectionStateChanged, this, [this](bool) {
         updateModbusLabels();
@@ -287,16 +263,9 @@ DemoWindow::DemoWindow() {
             [this](const QString &error) {
         m_modbusWriteResultLabel->setText("Last write failed -- " + error);
     });
-    connect(m_btnModbusWrite, &QPushButton::clicked, this, &DemoWindow::onModbusWriteClicked);
 
-    connect(m_btnModbusConnect, &QPushButton::clicked, this, [this]() {
-        m_modbus.connectToHost(m_modbusHost->text(), static_cast<quint16>(m_modbusPort->value()));
-        updateModbusLabels();
-    });
-    connect(m_btnModbusDisconnect, &QPushButton::clicked, this, [this]() {
-        m_modbus.disconnectNow();
-        updateModbusLabels();
-    });
+    connect(m_btnModbusConnect, &QPushButton::clicked, this,
+            &DemoWindow::onModbusConnectClicked);
 
     connect(&m_updateChecker, &UpdateChecker::updateAvailable,
             &m_updateInstaller, &UpdateInstaller::download);
@@ -343,19 +312,31 @@ bool DemoWindow::isModbusWriteFunction() const {
 }
 
 void DemoWindow::onModbusFunctionChanged() {
-    m_modbusModeStack->setCurrentIndex(isModbusWriteFunction() ? 1 : 0);
-    if (!isModbusWriteFunction()) {
-        if (isModbusCoilFunction()) {
-            m_modbusTable->setColumnCount(3);
-            m_modbusTable->setHorizontalHeaderLabels({"Address", "Value", "Name"});
-        } else {
-            m_modbusTable->setColumnCount(7);
-            m_modbusTable->setHorizontalHeaderLabels(
-                {"Address", "Register Value", "Big Endian", "Little Endian",
-                 "BE Swapped", "LE Swapped", "Name"});
-        }
-        rebuildModbusTableRows();
+    if (isModbusWriteFunction()) {
+        // No value column at all -- nothing is polled while a write function is selected
+        // (spec.md D5 of .plans/2026-08-21-modbus-unified-function-ui), so the table is
+        // just an address picker: double-click a row to open the write dialog for it.
+        m_modbusTable->setColumnCount(2);
+        m_modbusTable->setHorizontalHeaderLabels({"Address", "Name"});
+    } else if (isModbusCoilFunction()) {
+        m_modbusTable->setColumnCount(3);
+        m_modbusTable->setHorizontalHeaderLabels({"Address", "Value", "Name"});
+    } else {
+        m_modbusTable->setColumnCount(7);
+        m_modbusTable->setHorizontalHeaderLabels(
+            {"Address", "Register Value", "Big Endian", "Little Endian",
+             "BE Swapped", "LE Swapped", "Name"});
     }
+    rebuildModbusTableRows();
+}
+
+void DemoWindow::onModbusConnectClicked() {
+    if (m_modbus.isReady()) {
+        m_modbus.disconnectNow();
+    } else {
+        m_modbus.connectToHost(m_modbusHost->text(), static_cast<quint16>(m_modbusPort->value()));
+    }
+    updateModbusLabels();
 }
 
 void DemoWindow::pollModbusRegisters() {
@@ -379,67 +360,110 @@ void DemoWindow::pollModbusRegisters() {
         m_modbus.readInputRegisters(slaveId, start, count);
         break;
     default:
-        break;   // a write function is selected -- writes are one-shot, not polled (spec.md D5)
+        break;   // a write function is selected -- writes are one-shot, not polled
     }
 }
 
-void DemoWindow::onModbusWriteClicked() {
-    const QString text = m_modbusWriteValues->text().trimmed();
+void DemoWindow::onModbusTableDoubleClicked(int row, int /*column*/) {
+    if (!isModbusWriteFunction() || !m_modbus.isReady()) {
+        return;
+    }
     const quint8 slaveId = static_cast<quint8>(m_modbusSlaveId->value());
-    const quint16 address = static_cast<quint16>(m_modbusRegisterStart->value());
+    const quint16 address = static_cast<quint16>(m_modbusRegisterStart->value() + row);
+    const int functionIndex = m_modbusFunction->currentIndex();
+    const bool isMultiple = functionIndex == kFunctionWriteMultipleCoils
+        || functionIndex == kFunctionWriteMultipleRegisters;
 
-    switch (m_modbusFunction->currentIndex()) {
-    case kFunctionWriteSingleCoil: {
-        const QString normalized = text.toUpper();
-        bool state = false;
-        if (normalized == "1" || normalized == "ON") {
-            state = true;
-        } else if (normalized == "0" || normalized == "OFF") {
-            state = false;
-        } else {
-            m_modbusWriteResultLabel->setText(
-                "Last write failed -- value must be 0, 1, ON, or OFF");
+    QDialog dialog(this);
+    dialog.setWindowTitle(m_modbusFunction->currentText());
+    auto *dialogLayout = new QVBoxLayout(&dialog);
+    dialogLayout->addWidget(new QLabel(
+        QString(isMultiple ? "Start Address: %1" : "Address: %1").arg(address)));
+
+    QComboBox *coilStateField = nullptr;
+    QLineEdit *valueField = nullptr;
+    if (functionIndex == kFunctionWriteSingleCoil) {
+        dialogLayout->addWidget(new QLabel("State:"));
+        coilStateField = new QComboBox;
+        coilStateField->addItem("OFF");
+        coilStateField->addItem("ON");
+        dialogLayout->addWidget(coilStateField);
+    } else if (functionIndex == kFunctionWriteSingleRegister) {
+        dialogLayout->addWidget(new QLabel("Enter value (0-65535):"));
+        valueField = new QLineEdit;
+        dialogLayout->addWidget(valueField);
+    } else if (functionIndex == kFunctionWriteMultipleCoils) {
+        dialogLayout->addWidget(new QLabel("Values (comma-separated 0/1):"));
+        valueField = new QLineEdit;
+        dialogLayout->addWidget(valueField);
+    } else if (functionIndex == kFunctionWriteMultipleRegisters) {
+        dialogLayout->addWidget(new QLabel("Values (comma-separated 0-65535):"));
+        valueField = new QLineEdit;
+        dialogLayout->addWidget(valueField);
+    } else {
+        return;   // not a write function -- unreachable given the guard above
+    }
+
+    auto *errorLabel = new QLabel;
+    errorLabel->setVisible(false);
+    dialogLayout->addWidget(errorLabel);
+
+    auto *buttonRow = new QWidget;
+    auto *buttonLayout = new QHBoxLayout(buttonRow);
+    auto *cancelButton = new QPushButton("Cancel");
+    auto *sendButton = new QPushButton("Send");
+    buttonLayout->addWidget(cancelButton);
+    buttonLayout->addWidget(sendButton);
+    dialogLayout->addWidget(buttonRow);
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+    // Validation stays inside the dialog (an inline error label, not a closed popup) --
+    // the exact same per-function rules already proven in Steps 4m/4o, just triggered from
+    // a modal Send button instead of a permanent one.
+    connect(sendButton, &QPushButton::clicked, &dialog, [&]() {
+        if (functionIndex == kFunctionWriteSingleCoil) {
+            m_modbus.writeSingleCoil(slaveId, address, coilStateField->currentIndex() == 1);
+            dialog.accept();
             return;
         }
-        m_modbus.writeSingleCoil(slaveId, address, state);
-        break;
-    }
-    case kFunctionWriteSingleRegister: {
-        bool ok = false;
-        const int value = text.toInt(&ok);
-        if (!ok || value < 0 || value > 65535) {
-            m_modbusWriteResultLabel->setText(
-                "Last write failed -- value must be an integer 0-65535");
-            return;
-        }
-        m_modbus.writeSingleRegister(slaveId, address, static_cast<quint16>(value));
-        break;
-    }
-    case kFunctionWriteMultipleCoils: {
-        const QStringList parts = text.split(',', Qt::SkipEmptyParts);
-        QVector<bool> coils;
-        bool allValid = !parts.isEmpty() && parts.size() <= 1968;
-        for (const QString &part : parts) {
-            const QString trimmed = part.trimmed();
-            if (trimmed == "1") {
-                coils.append(true);
-            } else if (trimmed == "0") {
-                coils.append(false);
-            } else {
-                allValid = false;
-                break;
+        if (functionIndex == kFunctionWriteSingleRegister) {
+            bool ok = false;
+            const int value = valueField->text().trimmed().toInt(&ok);
+            if (!ok || value < 0 || value > 65535) {
+                errorLabel->setText("Value must be an integer 0-65535");
+                errorLabel->setVisible(true);
+                return;
             }
-        }
-        if (!allValid) {
-            m_modbusWriteResultLabel->setText(
-                "Last write failed -- values must be 1-1968 comma-separated 0/1");
+            m_modbus.writeSingleRegister(slaveId, address, static_cast<quint16>(value));
+            dialog.accept();
             return;
         }
-        m_modbus.writeMultipleCoils(slaveId, address, coils);
-        break;
-    }
-    case kFunctionWriteMultipleRegisters: {
-        const QStringList parts = text.split(',', Qt::SkipEmptyParts);
+        if (functionIndex == kFunctionWriteMultipleCoils) {
+            const QStringList parts = valueField->text().split(',', Qt::SkipEmptyParts);
+            QVector<bool> coils;
+            bool allValid = !parts.isEmpty() && parts.size() <= 1968;
+            for (const QString &part : parts) {
+                const QString trimmed = part.trimmed();
+                if (trimmed == "1") {
+                    coils.append(true);
+                } else if (trimmed == "0") {
+                    coils.append(false);
+                } else {
+                    allValid = false;
+                    break;
+                }
+            }
+            if (!allValid) {
+                errorLabel->setText("Values must be 1-1968 comma-separated 0/1");
+                errorLabel->setVisible(true);
+                return;
+            }
+            m_modbus.writeMultipleCoils(slaveId, address, coils);
+            dialog.accept();
+            return;
+        }
+        // kFunctionWriteMultipleRegisters
+        const QStringList parts = valueField->text().split(',', Qt::SkipEmptyParts);
         QVector<quint16> values;
         bool allValid = !parts.isEmpty() && parts.size() <= 123;
         for (const QString &part : parts) {
@@ -452,25 +476,22 @@ void DemoWindow::onModbusWriteClicked() {
             values.append(static_cast<quint16>(value));
         }
         if (!allValid) {
-            m_modbusWriteResultLabel->setText(
-                "Last write failed -- values must be 1-123 comma-separated integers "
-                "0-65535");
+            errorLabel->setText("Values must be 1-123 comma-separated integers 0-65535");
+            errorLabel->setVisible(true);
             return;
         }
         m_modbus.writeMultipleRegisters(slaveId, address, values);
-        break;
-    }
-    default:
-        break;   // a read function is selected -- the Write page isn't shown
-    }
+        dialog.accept();
+    });
+
+    dialog.exec();
 }
 
 void DemoWindow::rebuildModbusTableRows() {
     const int start = m_modbusRegisterStart->value();
     const int count = m_modbusCount->value();
     const QString placeholder = "-";
-    const int lastDataCol = isModbusCoilFunction() ? 1 : 5;
-    const int nameCol = isModbusCoilFunction() ? 2 : 6;
+    const int nameCol = m_modbusTable->columnCount() - 1;
 
     m_modbusTable->setRowCount(count);
     for (int row = 0; row < count; ++row) {
@@ -478,7 +499,7 @@ void DemoWindow::rebuildModbusTableRows() {
         addressItem->setFlags(addressItem->flags() & ~Qt::ItemIsEditable);
         m_modbusTable->setItem(row, 0, addressItem);
 
-        for (int col = 1; col <= lastDataCol; ++col) {
+        for (int col = 1; col < nameCol; ++col) {
             auto *item = new QTableWidgetItem(placeholder);
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
             m_modbusTable->setItem(row, col, item);
@@ -537,9 +558,9 @@ void DemoWindow::updateModbusCoilTableValues(const QVector<bool> &bits) {
 
 void DemoWindow::clearModbusTableValues() {
     const QString placeholder = "-";
-    const int lastDataCol = isModbusCoilFunction() ? 1 : 5;
+    const int nameCol = m_modbusTable->columnCount() - 1;
     for (int row = 0; row < m_modbusTable->rowCount(); ++row) {
-        for (int col = 1; col <= lastDataCol; ++col) {
+        for (int col = 1; col < nameCol; ++col) {
             m_modbusTable->item(row, col)->setText(placeholder);
         }
     }
@@ -548,8 +569,7 @@ void DemoWindow::clearModbusTableValues() {
 void DemoWindow::updateModbusLabels() {
     const bool ready = m_modbus.isReady();
     m_modbusStateLabel->setText(QString("State: ") + (ready ? "Connected" : "Disconnected"));
-    m_btnModbusConnect->setEnabled(!ready);
-    m_btnModbusDisconnect->setEnabled(ready);
+    m_btnModbusConnect->setText(ready ? "Disconnect" : "Connect");
     if (!ready) {
         clearModbusTableValues();
     }

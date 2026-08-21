@@ -40,7 +40,8 @@ private:
     void clearModbusTableValues();
     void pollModbusRegisters();
     void onModbusFunctionChanged();
-    void onModbusWriteClicked();
+    void onModbusConnectClicked();
+    void onModbusTableDoubleClicked(int row, int column);
     bool isModbusCoilFunction() const;
     bool isModbusWriteFunction() const;
 
@@ -55,19 +56,15 @@ private:
     QLineEdit *m_modbusHost = nullptr;
     QSpinBox *m_modbusPort = nullptr;
     QSpinBox *m_modbusTimeout = nullptr;
+    QPushButton *m_btnModbusConnect = nullptr;
     QSpinBox *m_modbusSlaveId = nullptr;
     QSpinBox *m_modbusRegisterStart = nullptr;
     QSpinBox *m_modbusCount = nullptr;
     QSpinBox *m_modbusPollRate = nullptr;
     QComboBox *m_modbusFunction = nullptr;
-    QPushButton *m_btnModbusConnect = nullptr;
-    QPushButton *m_btnModbusDisconnect = nullptr;
     QLabel *m_modbusStateLabel = nullptr;
-    QStackedWidget *m_modbusModeStack = nullptr;
-    QTableWidget *m_modbusTable = nullptr;
-    QLineEdit *m_modbusWriteValues = nullptr;
-    QPushButton *m_btnModbusWrite = nullptr;
     QLabel *m_modbusWriteResultLabel = nullptr;
+    QTableWidget *m_modbusTable = nullptr;
 
     QLabel *m_workerLabel = nullptr;
 };
