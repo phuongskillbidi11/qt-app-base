@@ -140,4 +140,65 @@ WriteSingleRegisterResponse decodeWriteSingleRegisterResponse(const QByteArray &
     return response;
 }
 
+QByteArray encodeWriteMultipleRegistersRequest(const WriteMultipleRegistersRequest &request) {
+    QByteArray data;
+    const int byteCount = request.values.size() * 2;
+    data.reserve(13 + byteCount);
+
+    appendBigEndian16(data, request.transactionId);
+    appendBigEndian16(data, 0x0000);
+    appendBigEndian16(data, static_cast<uint16_t>(7 + byteCount));
+    data.append(static_cast<char>(request.unitId));
+    data.append(static_cast<char>(0x10));
+    appendBigEndian16(data, request.startAddress);
+    appendBigEndian16(data, static_cast<uint16_t>(request.values.size()));
+    data.append(static_cast<char>(byteCount));
+    for (uint16_t value : request.values) {
+        appendBigEndian16(data, value);
+    }
+
+    return data;
+}
+
+WriteMultipleRegistersResponse decodeWriteMultipleRegistersResponse(const QByteArray &data) {
+    WriteMultipleRegistersResponse response;
+
+    if (data.size() < 8) {
+        return response;
+    }
+
+    response.transactionId = readBigEndian16(data, 0);
+    const uint16_t mbapLength = readBigEndian16(data, 4);
+    const int frameSize = 6 + static_cast<int>(mbapLength);
+    if (data.size() < frameSize) {
+        return response;
+    }
+
+    if (readBigEndian16(data, 2) != 0x0000 || mbapLength < 2) {
+        response.status = ResponseStatus::Malformed;
+        return response;
+    }
+
+    const uint8_t functionCode = byteAt(data, 7);
+    if ((functionCode & 0x80) != 0) {
+        if (mbapLength < 3) {
+            response.status = ResponseStatus::Malformed;
+            return response;
+        }
+        response.status = ResponseStatus::Exception;
+        response.exceptionCode = byteAt(data, 8);
+        return response;
+    }
+
+    if (functionCode != 0x10 || mbapLength != 6) {
+        response.status = ResponseStatus::Malformed;
+        return response;
+    }
+
+    response.startAddress = readBigEndian16(data, 8);
+    response.quantity = readBigEndian16(data, 10);
+    response.status = ResponseStatus::Ok;
+    return response;
+}
+
 }  // namespace ModbusCodec

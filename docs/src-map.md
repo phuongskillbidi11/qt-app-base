@@ -146,8 +146,9 @@ outstanding so responses decode with the right codec function, and a per-request
 (`setRequestTimeoutMs()`) that fails a stuck request cleanly instead of blocking every
 future one — see `.plans/2026-08-20-modbus-write-single-register/spec.md` D2 and
 `.plans/2026-08-21-modbus-request-timeout/spec.md`), `modbus_codec` (MBAP framing +
-Read Holding Registers + Write Single Register, pure). No store, no settings dialog, and no
-function code besides these two — see the phase specs under `.plans/` for why. Builds
+Read Holding Registers, Write Single Register, and Write Multiple Registers, pure). No
+store, no settings dialog, and no function code besides these three — see the phase specs
+under `.plans/` for why. Builds
 standalone within `qt-app-base` itself (`add_feature_module`); consumed by
 `demo/demowindow.cpp`'s live Modbus group.
 

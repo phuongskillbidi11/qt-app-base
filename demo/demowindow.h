@@ -58,6 +58,10 @@ private:
     QSpinBox *m_modbusWriteValue = nullptr;
     QPushButton *m_btnModbusWrite = nullptr;
     QLabel *m_modbusWriteResultLabel = nullptr;
+    QSpinBox *m_modbusWriteMultipleAddress = nullptr;
+    QLineEdit *m_modbusWriteMultipleValues = nullptr;
+    QPushButton *m_btnModbusWriteMultiple = nullptr;
+    QLabel *m_modbusWriteMultipleResultLabel = nullptr;
     QPushButton *m_btnModbusConnect = nullptr;
     QPushButton *m_btnModbusDisconnect = nullptr;
     QLabel *m_modbusStateLabel = nullptr;

@@ -81,6 +81,21 @@ void ModbusConnection::writeSingleRegister(quint8 unitId, quint16 address, quint
     requestTimer_.start(requestTimeoutMs_);
 }
 
+void ModbusConnection::writeMultipleRegisters(quint8 unitId, quint16 startAddress,
+                                               const QVector<quint16> &values) {
+    if (!isReady() || pendingRequest_ != PendingRequest::None) {
+        return;
+    }
+    ModbusCodec::WriteMultipleRegistersRequest request;
+    request.transactionId = nextTransactionId_++;
+    request.unitId = unitId;
+    request.startAddress = startAddress;
+    request.values = values;
+    pendingRequest_ = PendingRequest::WriteMultipleRegisters;
+    socket_.write(ModbusCodec::encodeWriteMultipleRegistersRequest(request));
+    requestTimer_.start(requestTimeoutMs_);
+}
+
 void ModbusConnection::onSocketReadyRead() {
     readBuffer_.append(socket_.readAll());
 
@@ -122,6 +137,26 @@ void ModbusConnection::onSocketReadyRead() {
         return;
     }
 
+    if (pendingRequest_ == PendingRequest::WriteMultipleRegisters) {
+        const ModbusCodec::WriteMultipleRegistersResponse response =
+            ModbusCodec::decodeWriteMultipleRegistersResponse(readBuffer_);
+        if (response.status == ModbusCodec::ResponseStatus::Incomplete) {
+            return;   // wait for more bytes
+        }
+        readBuffer_.clear();
+        pendingRequest_ = PendingRequest::None;
+        requestTimer_.stop();
+        if (response.status == ModbusCodec::ResponseStatus::Ok) {
+            emit multipleRegistersWritten(response.startAddress, response.quantity);
+        } else if (response.status == ModbusCodec::ResponseStatus::Exception) {
+            emit multipleWriteFailed(
+                QString("Modbus exception code %1").arg(response.exceptionCode));
+        } else {
+            emit multipleWriteFailed("Malformed Modbus response");
+        }
+        return;
+    }
+
     // Bytes arrived with nothing pending -- not expected by this design (one outstanding
     // request at a time, enforced by both readHoldingRegisters() and writeSingleRegister()).
     // Drop them rather than let them corrupt whatever the next real response turns out to be.
@@ -140,6 +175,8 @@ void ModbusConnection::onRequestTimeout() {
         emit readFailed("timed out waiting for a response");
     } else if (timedOut == PendingRequest::WriteSingleRegister) {
         emit writeFailed("timed out waiting for a response");
+    } else if (timedOut == PendingRequest::WriteMultipleRegisters) {
+        emit multipleWriteFailed("timed out waiting for a response");
     }
 }
 

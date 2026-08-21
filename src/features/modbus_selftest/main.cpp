@@ -73,5 +73,31 @@ int main() {
               && writeException.exceptionCode == 2,
           "decode returns Exception with the known exception code for a write");
 
+    ModbusCodec::WriteMultipleRegistersRequest writeMultipleRequest;
+    writeMultipleRequest.transactionId = 1;
+    writeMultipleRequest.unitId = 1;
+    writeMultipleRequest.startAddress = 1;
+    writeMultipleRequest.values = {10, 20};
+    const QByteArray encodedWriteMultiple =
+        ModbusCodec::encodeWriteMultipleRegistersRequest(writeMultipleRequest);
+    check(encodedWriteMultiple == QByteArray::fromHex("00010000000b01100001000204000a0014"),
+          "encode produces the known Write Multiple Registers request");
+
+    const QByteArray writeMultipleOkFrame = QByteArray::fromHex("000100000006011000010002");
+    const ModbusCodec::WriteMultipleRegistersResponse writeMultipleOk =
+        ModbusCodec::decodeWriteMultipleRegistersResponse(writeMultipleOkFrame);
+    check(writeMultipleOk.status == ModbusCodec::ResponseStatus::Ok
+              && writeMultipleOk.transactionId == 1
+              && writeMultipleOk.startAddress == 1
+              && writeMultipleOk.quantity == 2,
+          "decode returns Ok with the echoed start address and quantity");
+
+    const ModbusCodec::WriteMultipleRegistersResponse writeMultipleException =
+        ModbusCodec::decodeWriteMultipleRegistersResponse(
+            QByteArray::fromHex("000100000003019002"));
+    check(writeMultipleException.status == ModbusCodec::ResponseStatus::Exception
+              && writeMultipleException.exceptionCode == 2,
+          "decode returns Exception with the known exception code for a multi-register write");
+
     return allPassed ? 0 : 1;
 }

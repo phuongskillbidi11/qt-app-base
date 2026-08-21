@@ -66,4 +66,28 @@ struct WriteSingleRegisterResponse {
 // specification -- verified directly against a real pymodbus server, not assumed.
 WriteSingleRegisterResponse decodeWriteSingleRegisterResponse(const QByteArray &data);
 
+struct WriteMultipleRegistersRequest {
+    uint16_t transactionId = 0;
+    uint8_t unitId = 1;
+    uint16_t startAddress = 0;
+    QVector<uint16_t> values;   // 1-123 registers per the Modbus specification
+};
+
+// Builds the full MBAP header + PDU byte sequence ready to write to a socket.
+QByteArray encodeWriteMultipleRegistersRequest(const WriteMultipleRegistersRequest &request);
+
+struct WriteMultipleRegistersResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint16_t transactionId = 0;
+    uint8_t exceptionCode = 0;   // meaningful only when status == Exception
+    uint16_t startAddress = 0;   // meaningful only when status == Ok
+    uint16_t quantity = 0;       // meaningful only when status == Ok
+};
+
+// Decodes exactly one Write Multiple Registers response frame from the front of `data`. A
+// successful write echoes the request's start address and register count back -- not the
+// values themselves -- per the Modbus specification, verified directly against a real
+// pymodbus client/server exchange, not assumed.
+WriteMultipleRegistersResponse decodeWriteMultipleRegistersResponse(const QByteArray &data);
+
 }  // namespace ModbusCodec

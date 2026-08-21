@@ -38,11 +38,15 @@ public:
     // 1000ms if never called — see spec.md D2.
     void setRequestTimeoutMs(int ms);
 
-    // Both no-op (do not write to the socket) unless isReady() and no other request is
+    // All three no-op (do not write to the socket) unless isReady() and no other request is
     // already outstanding -- see spec.md D2 of
     // .plans/2026-08-20-modbus-write-single-register.
     void readHoldingRegisters(quint8 unitId, quint16 startAddress, quint16 quantity);
     void writeSingleRegister(quint8 unitId, quint16 address, quint16 value);
+    // `values` must be 1-123 entries -- validated by the caller (the demo UI), not here;
+    // see spec.md D3 of .plans/2026-08-21-modbus-write-multiple-registers.
+    void writeMultipleRegisters(quint8 unitId, quint16 startAddress,
+                                 const QVector<quint16> &values);
 
     bool isReady() const override;
     QString errorString() const override;
@@ -52,9 +56,12 @@ signals:
     void readFailed(QString error);
     void singleRegisterWritten(quint16 address, quint16 value);
     void writeFailed(QString error);
+    void multipleRegistersWritten(quint16 startAddress, quint16 quantity);
+    void multipleWriteFailed(QString error);
 
 private:
-    enum class PendingRequest { None, ReadHoldingRegisters, WriteSingleRegister };
+    enum class PendingRequest { None, ReadHoldingRegisters, WriteSingleRegister,
+                                 WriteMultipleRegisters };
 
     void onSocketReadyRead();
     void onRequestTimeout();

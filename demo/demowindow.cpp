@@ -128,6 +128,23 @@ DemoWindow::DemoWindow() {
 
     m_modbusWriteResultLabel = new QLabel("Last write: -");
     modbusPageLayout->addWidget(m_modbusWriteResultLabel);
+
+    auto *modbusWriteMultipleRow = new QWidget;
+    auto *modbusWriteMultipleLayout = new QHBoxLayout(modbusWriteMultipleRow);
+    modbusWriteMultipleLayout->setContentsMargins(0, 0, 0, 0);
+    modbusWriteMultipleLayout->addWidget(new QLabel("Write Multiple Registers -- Address:"));
+    m_modbusWriteMultipleAddress = new QSpinBox;
+    m_modbusWriteMultipleAddress->setRange(0, 65535);
+    modbusWriteMultipleLayout->addWidget(m_modbusWriteMultipleAddress);
+    modbusWriteMultipleLayout->addWidget(new QLabel("Values (comma-separated):"));
+    m_modbusWriteMultipleValues = new QLineEdit;
+    modbusWriteMultipleLayout->addWidget(m_modbusWriteMultipleValues);
+    m_btnModbusWriteMultiple = new QPushButton("Write Multiple");
+    modbusWriteMultipleLayout->addWidget(m_btnModbusWriteMultiple);
+    modbusPageLayout->addWidget(modbusWriteMultipleRow);
+
+    m_modbusWriteMultipleResultLabel = new QLabel("Last multi-write: -");
+    modbusPageLayout->addWidget(m_modbusWriteMultipleResultLabel);
     modbusPageLayout->addStretch(1);
     m_protocolStack->addWidget(modbusPage);
 
@@ -216,6 +233,41 @@ DemoWindow::DemoWindow() {
             static_cast<quint8>(m_modbusSlaveId->value()),
             static_cast<quint16>(m_modbusWriteAddress->value()),
             static_cast<quint16>(m_modbusWriteValue->value()));
+    });
+    connect(&m_modbus, &ModbusConnection::multipleRegistersWritten, this,
+            [this](quint16 startAddress, quint16 quantity) {
+        m_modbusWriteMultipleResultLabel->setText(
+            QString("Last multi-write: %1 register(s) from address %2 (confirmed)")
+                .arg(quantity).arg(startAddress));
+    });
+    connect(&m_modbus, &ModbusConnection::multipleWriteFailed, this,
+            [this](const QString &error) {
+        m_modbusWriteMultipleResultLabel->setText("Last multi-write failed -- " + error);
+    });
+    connect(m_btnModbusWriteMultiple, &QPushButton::clicked, this, [this]() {
+        const QStringList parts =
+            m_modbusWriteMultipleValues->text().split(',', Qt::SkipEmptyParts);
+        QVector<quint16> values;
+        bool allValid = !parts.isEmpty() && parts.size() <= 123;
+        for (const QString &part : parts) {
+            bool ok = false;
+            const int value = part.trimmed().toInt(&ok);
+            if (!ok || value < 0 || value > 65535) {
+                allValid = false;
+                break;
+            }
+            values.append(static_cast<quint16>(value));
+        }
+        if (!allValid) {
+            m_modbusWriteMultipleResultLabel->setText(
+                "Last multi-write failed -- values must be 1-123 comma-separated integers "
+                "0-65535");
+            return;
+        }
+        m_modbus.writeMultipleRegisters(
+            static_cast<quint8>(m_modbusSlaveId->value()),
+            static_cast<quint16>(m_modbusWriteMultipleAddress->value()),
+            values);
     });
 
     connect(m_btnModbusConnect, &QPushButton::clicked, this, [this]() {
