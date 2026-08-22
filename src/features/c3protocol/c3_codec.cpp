@@ -437,6 +437,23 @@ GetDataCountResponse decodeGetDataCountResponse(const QByteArray &data, bool inc
     return response;
 }
 
+QString decodeC3DateTime(uint32_t raw) {
+    uint32_t v = raw;
+    const int second = static_cast<int>(v % 60); v /= 60;
+    const int minute = static_cast<int>(v % 60); v /= 60;
+    const int hour = static_cast<int>(v % 24); v /= 24;
+    const int day = static_cast<int>(v % 31) + 1; v /= 31;
+    const int month = static_cast<int>(v % 12) + 1; v /= 12;
+    const int year = static_cast<int>(v) + 2000;
+    return QString("%1-%2-%3 %4:%5:%6")
+        .arg(year, 4, 10, QLatin1Char('0'))
+        .arg(month, 2, 10, QLatin1Char('0'))
+        .arg(day, 2, 10, QLatin1Char('0'))
+        .arg(hour, 2, 10, QLatin1Char('0'))
+        .arg(minute, 2, 10, QLatin1Char('0'))
+        .arg(second, 2, 10, QLatin1Char('0'));
+}
+
 QByteArray encodeRtlogBinaryRequest(bool includeSessionBlock, uint16_t sessionId,
                                     int32_t requestNr) {
     return encodeFrame(kCommandRtlogBinary, sessionId, requestNr, {}, includeSessionBlock);

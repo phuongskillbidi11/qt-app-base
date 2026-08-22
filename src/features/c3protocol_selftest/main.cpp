@@ -405,5 +405,11 @@ int main() {
               "parseGetDataPayload reads the same real fixture directly, with no frame to strip");
     }
 
+    check(C3Codec::decodeC3DateTime(347748895) == "2010-10-26 20:54:55",
+          "decodeC3DateTime matches this file's own pre-existing worked example");
+
+    check(C3Codec::decodeC3DateTime(853507565) == "2026-07-21 13:26:05",
+          "decodeC3DateTime matches a live-captured value cross-checked against ZKTecoProtocol");
+
     return allPassed ? 0 : 1;
 }

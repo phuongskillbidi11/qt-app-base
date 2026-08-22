@@ -227,6 +227,15 @@ struct GetDataCountResponse {
 };
 GetDataCountResponse decodeGetDataCountResponse(const QByteArray &data, bool includeSessionBlock);
 
+// Decodes a raw C3DateTime-encoded seconds value (found in RTLOG Event/DoorAlarmStatus
+// records' timeSecond field and every table's own "Time_second" field) into
+// "YYYY-MM-DD HH:MM:SS". Pure integer arithmetic on a fixed calendar breakdown -- not a
+// Unix timestamp, so no QDateTime/timezone involved. Confirmed against two independent real
+// values: 347748895 -> "2010-10-26 20:54:55" (this file's own pre-existing worked example)
+// and a live-captured 853507565 -> "2026-07-21 13:26:05", cross-checked against the
+// ZKTecoProtocol reference app's own displayed value for that same live record.
+QString decodeC3DateTime(uint32_t raw);
+
 constexpr uint8_t kCommandGetParam = 0x04;
 
 // Request payload is plain ASCII text: the requested parameter names, comma-separated, no

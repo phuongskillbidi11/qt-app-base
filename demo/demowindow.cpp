@@ -20,6 +20,7 @@
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QListWidget>
 #include <QThread>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -38,14 +39,15 @@ constexpr int kFunctionWriteMultipleRegisters = 7;
 constexpr int kC3ViewDeviceInfo = 0;
 constexpr int kC3ViewUsers = 1;
 constexpr int kC3ViewTemplates = 2;
-constexpr int kC3ViewRealtimeLog = 3;
-constexpr int kC3ViewControl = 4;
-constexpr int kC3ViewRecordCount = 5;
+constexpr int kC3ViewTransaction = 3;
+constexpr int kC3ViewRealtimeLog = 4;
+constexpr int kC3ViewControl = 5;
+constexpr int kC3ViewRecordCount = 6;
 }  // namespace
 
 DemoWindow::DemoWindow() {
     setWindowTitle("qt-app-base demo");
-    resize(560, 320);
+    resize(1000, 560);
 
     m_workerLabel = new QLabel("Worker: idle");
     auto *btnBlock = new QPushButton("Run a 3s blocking call");
@@ -53,11 +55,28 @@ DemoWindow::DemoWindow() {
     auto *central = new QWidget;
     auto *layout = new QVBoxLayout(central);
 
-    layout->addWidget(new QLabel("Protocol:"));
-    m_protocolCombo = new QComboBox;
-    m_protocolCombo->addItem("Modbus TCP");
-    m_protocolCombo->addItem("RabbitMQ (not available in this build)");
-    layout->addWidget(m_protocolCombo);
+    auto *navRow = new QWidget;
+    auto *navRowLayout = new QHBoxLayout(navRow);
+    navRowLayout->setContentsMargins(0, 0, 0, 0);
+
+    // Fixed row indices, never dynamically added/removed -- only setRowHidden() changes.
+    // 0=Modbus TCP, 1=C3 Protocol header/entry-point, 2..8=the 7 C3 sub-views (2 + kC3View*).
+    // See spec.md D1/D2 of .plans/2026-08-22-demo-ui-sidebar.
+    m_sidebar = new QListWidget;
+    m_sidebar->setFixedWidth(190);
+    m_sidebar->addItem("Modbus TCP");
+    m_sidebar->addItem("C3 Protocol (ZKTeco)");
+    m_sidebar->addItem("  Device Info");
+    m_sidebar->addItem("  Users");
+    m_sidebar->addItem("  Templates");
+    m_sidebar->addItem("  Transaction");
+    m_sidebar->addItem("  Real-time Log");
+    m_sidebar->addItem("  Control");
+    m_sidebar->addItem("  Record Count");
+    for (int row = 2; row <= 8; ++row) {
+        m_sidebar->setRowHidden(row, true);
+    }
+    navRowLayout->addWidget(m_sidebar);
 
     m_protocolStack = new QStackedWidget;
 
@@ -147,20 +166,6 @@ DemoWindow::DemoWindow() {
     modbusPageLayout->addWidget(m_modbusTable);
     m_protocolStack->addWidget(modbusPage);
 
-    // Page 1 -- RabbitMQ, placeholder only. Not wired -- see spec.md's build-dependency
-    // finding (AMQP-CPP is not available to qt-app-base's own standalone build).
-    auto *rabbitPage = new QWidget;
-    auto *rabbitPageLayout = new QVBoxLayout(rabbitPage);
-    rabbitPageLayout->setContentsMargins(0, 0, 0, 0);
-    rabbitPageLayout->addWidget(new QLabel(
-        "RabbitMQ is not available in this build yet -- qt-app-base's own standalone build\n"
-        "has no AMQP-CPP vendored (only qt-mq-lab does). See\n"
-        ".plans/2026-08-18-protocol-dropdown/spec.md."));
-    rabbitPageLayout->addStretch(1);
-    m_protocolStack->addWidget(rabbitPage);
-
-    m_protocolCombo->addItem("C3 Protocol (ZKTeco)");
-
     // Page 2 -- C3 Protocol (ZKTeco). Mirrors the Modbus page's own shape: one connect row,
     // one mode dropdown, a shared table for the three fetch-once views, a dedicated page each
     // for the continuously-polled Real-time Log and for Control (never a table) -- see
@@ -184,20 +189,6 @@ DemoWindow::DemoWindow() {
     c3ConnectLayout->addWidget(m_btnC3Connect);
     c3PageLayout->addWidget(c3ConnectRow);
 
-    auto *c3ViewRow = new QWidget;
-    auto *c3ViewLayout = new QHBoxLayout(c3ViewRow);
-    c3ViewLayout->setContentsMargins(0, 0, 0, 0);
-    c3ViewLayout->addWidget(new QLabel("View:"));
-    m_c3View = new QComboBox;
-    m_c3View->addItem("Device Info");
-    m_c3View->addItem("Users");
-    m_c3View->addItem("Templates");
-    m_c3View->addItem("Real-time Log");
-    m_c3View->addItem("Control");
-    m_c3View->addItem("Record Count");
-    c3ViewLayout->addWidget(m_c3View);
-    c3PageLayout->addWidget(c3ViewRow);
-
     m_c3StateLabel = new QLabel("State: Disconnected");
     c3PageLayout->addWidget(m_c3StateLabel);
 
@@ -220,8 +211,9 @@ DemoWindow::DemoWindow() {
     auto *c3LogPageLayout = new QVBoxLayout(c3LogPage);
     c3LogPageLayout->setContentsMargins(0, 0, 0, 0);
     m_c3LogTable = new QTableWidget;
-    m_c3LogTable->setColumnCount(2);
-    m_c3LogTable->setHorizontalHeaderLabels({"Time", "Card No"});
+    m_c3LogTable->setColumnCount(7);
+    m_c3LogTable->setHorizontalHeaderLabels(
+        {"Time", "CardNo", "Pin", "DoorID", "EventType", "InOutState", "VerifyMode"});
     m_c3LogTable->verticalHeader()->setVisible(false);
     m_c3LogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     c3LogPageLayout->addWidget(m_c3LogTable);
@@ -292,10 +284,11 @@ DemoWindow::DemoWindow() {
     c3PageLayout->addWidget(m_c3ViewStack);
     m_protocolStack->addWidget(c3Page);
 
-    layout->addWidget(m_protocolStack);
+    navRowLayout->addWidget(m_protocolStack);
+    layout->addWidget(navRow);
 
-    connect(m_protocolCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            m_protocolStack, &QStackedWidget::setCurrentIndex);
+    connect(m_sidebar, &QListWidget::currentRowChanged,
+            this, &DemoWindow::onSidebarRowChanged);
 
     layout->addSpacing(12);
     layout->addWidget(btnBlock);
@@ -406,8 +399,6 @@ DemoWindow::DemoWindow() {
     connect(m_btnModbusConnect, &QPushButton::clicked, this,
             &DemoWindow::onModbusConnectClicked);
 
-    connect(m_c3View, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int) { onC3ViewChanged(); });
     connect(m_btnC3Refresh, &QPushButton::clicked, this, [this]() { refreshC3View(); });
     connect(m_btnC3Connect, &QPushButton::clicked, this, &DemoWindow::onC3ConnectClicked);
     connect(m_btnC3DoorOpen, &QPushButton::clicked, this, [this]() {
@@ -457,7 +448,11 @@ DemoWindow::DemoWindow() {
             if (record.kind != C3Codec::RtLogRecordKind::Event || record.cardNo == 0) {
                 continue;
             }
-            appendC3LogRow(QString::number(record.timeSecond), QString::number(record.cardNo));
+            appendC3LogRow({C3Codec::decodeC3DateTime(record.timeSecond),
+                            QString::number(record.cardNo), QString::number(record.pin),
+                            QString::number(record.doorId), QString::number(record.eventType),
+                            QString::number(record.inOutState),
+                            QString::number(record.verified)});
         }
     });
     connect(&m_c3, &C3Connection::realtimeLogKeyValueReceived, this,
@@ -472,7 +467,11 @@ DemoWindow::DemoWindow() {
                 continue;
             }
             const QString time = record.value("time").toString();
-            appendC3LogRow(time.isEmpty() ? "-" : time, QString::number(cardNo));
+            // Only Time/CardNo are reliably present in key/value mode (an "un-interpreted"
+            // map -- see c3_codec.h's own RtLogKeyValueResponse note); the other 5 columns
+            // stay "-" rather than guessing a key name that may not exist.
+            appendC3LogRow({time.isEmpty() ? "-" : time, QString::number(cardNo),
+                            "-", "-", "-", "-", "-"});
         }
     });
     connect(&m_c3, &C3Connection::controlAcknowledged, this, [this]() {
@@ -520,7 +519,7 @@ DemoWindow::DemoWindow() {
 
     onModbusFunctionChanged();
     updateModbusLabels();
-    onC3ViewChanged();
+    m_sidebar->setCurrentRow(0);
     updateC3Labels();
 }
 
@@ -827,8 +826,57 @@ void DemoWindow::onC3ConnectClicked() {
     updateC3Labels();
 }
 
-void DemoWindow::onC3ViewChanged() {
-    const int index = m_c3View->currentIndex();
+void DemoWindow::onSidebarRowChanged(int row) {
+    // row==1's own branch defers its setCurrentRow() call via QTimer::singleShot(0, ...)
+    // rather than calling it directly from here -- see that branch's own comment. A
+    // synchronous/reentrant call was tried first and shipped, then found live (F1) to
+    // leave the sidebar's visual highlight stuck on row 1 despite the content pane
+    // switching correctly -- a real Qt reentrancy hazard between nested calls to
+    // setCurrentRow() from within a currentRowChanged handler, confirmed by testing, not
+    // just theorized. No bool guard is needed for this deferred call either: by the time
+    // the timer fires, this handler has already returned, so there is nothing to reenter.
+    if (row < 0) {
+        return;
+    }
+    if (row == 0) {
+        // Modbus TCP -- collapse the C3 sub-view rows, matching spec.md D1.
+        m_protocolStack->setCurrentIndex(0);
+        for (int r = 2; r <= 8; ++r) {
+            m_sidebar->setRowHidden(r, true);
+        }
+        return;
+    }
+    if (row == 1) {
+        // C3 Protocol header -- unhide the sub-views and jump straight to whichever was
+        // last active (spec.md D2/D3). setCurrentRow() is deferred to the next event-loop
+        // iteration instead of called directly here -- a synchronous/reentrant call was
+        // tried first and found live (F1 of .plans/2026-08-22-demo-ui-sidebar) to leave the
+        // sidebar's own visual highlight stuck on row 1 even though the nested call's other
+        // side effects (page switch, refresh) ran correctly. Deferring lets this call's own
+        // currentRowChanged processing fully finish first, avoiding the reentrancy.
+        for (int r = 2; r <= 8; ++r) {
+            m_sidebar->setRowHidden(r, false);
+        }
+        const int target = 2 + m_lastC3ViewIndex;
+        // Guarded: if the user has already navigated away from row 1 by the time this
+        // fires (confirmed live, F1 of .plans/2026-08-22-demo-ui-sidebar, with rapid
+        // repeated arrow-key presses), applying a now-stale jump would silently undo their
+        // more recent navigation. Only apply it if row 1 is still actually current.
+        QTimer::singleShot(0, this, [this, target]() {
+            if (m_sidebar->currentRow() == 1) {
+                m_sidebar->setCurrentRow(target);
+            }
+        });
+        return;
+    }
+
+    // One of the 7 C3 sub-view rows.
+    const int index = row - 2;
+    m_lastC3ViewIndex = index;
+    m_protocolStack->setCurrentIndex(1);
+    for (int r = 2; r <= 8; ++r) {
+        m_sidebar->setRowHidden(r, false);
+    }
     int stackIndex = 0;
     if (index == kC3ViewRealtimeLog) {
         stackIndex = 1;
@@ -849,7 +897,7 @@ void DemoWindow::refreshC3View() {
     if (!m_c3.isReady()) {
         return;
     }
-    switch (m_c3View->currentIndex()) {
+    switch (m_lastC3ViewIndex) {
     case kC3ViewDeviceInfo:
         m_c3.requestDeviceParams({"~SerialNumber", "FirmVer", "DeviceName", "LockCount",
                                   "AuxInCount", "AuxOutCount"});
@@ -859,6 +907,9 @@ void DemoWindow::refreshC3View() {
         break;
     case kC3ViewTemplates:
         m_c3.requestTableData("template");
+        break;
+    case kC3ViewTransaction:
+        m_c3.requestTableData("transaction");
         break;
     default:
         break;   // Real-time Log and Control are not fetched this way
@@ -873,7 +924,7 @@ void DemoWindow::refreshC3RecordCount() {
 }
 
 void DemoWindow::pollC3RealtimeLog() {
-    if (!m_c3.isReady() || m_c3View->currentIndex() != kC3ViewRealtimeLog) {
+    if (!m_c3.isReady() || m_lastC3ViewIndex != kC3ViewRealtimeLog) {
         return;
     }
     m_c3.requestRealtimeLog();
@@ -904,21 +955,29 @@ void DemoWindow::rebuildC3TableForRecords(const QVector<QVariantMap> &records) {
     m_c3Table->setRowCount(records.size());
     for (int row = 0; row < records.size(); ++row) {
         for (int col = 0; col < keys.size(); ++col) {
-            m_c3Table->setItem(row, col,
-                new QTableWidgetItem(records.at(row).value(keys.at(col)).toString()));
+            const QString &key = keys.at(col);
+            const QVariant value = records.at(row).value(key);
+            // Real calendar date instead of the raw encoded integer -- spec.md D9 of
+            // .plans/2026-08-22-demo-ui-sidebar. Every other column stays raw.
+            const QString text = (key == QLatin1String("Time_second"))
+                ? C3Codec::decodeC3DateTime(value.toUInt())
+                : value.toString();
+            m_c3Table->setItem(row, col, new QTableWidgetItem(text));
         }
     }
 }
 
-void DemoWindow::appendC3LogRow(const QString &time, const QString &details) {
+void DemoWindow::appendC3LogRow(const QStringList &cells) {
     // Append-only, capped -- see spec.md's own Real-time Log design (D1): this view
     // behaves like an actual log, not a snapshot. The cap prevents unbounded growth on a
-    // long-running HMI display.
+    // long-running HMI display. `cells` is always exactly 7 entries, matching the table's
+    // own 7 columns (Time/CardNo/Pin/DoorID/EventType/InOutState/VerifyMode).
     constexpr int kMaxLogRows = 500;
     const int row = m_c3LogTable->rowCount();
     m_c3LogTable->insertRow(row);
-    m_c3LogTable->setItem(row, 0, new QTableWidgetItem(time));
-    m_c3LogTable->setItem(row, 1, new QTableWidgetItem(details));
+    for (int col = 0; col < cells.size(); ++col) {
+        m_c3LogTable->setItem(row, col, new QTableWidgetItem(cells.at(col)));
+    }
     m_c3LogTable->scrollToBottom();
     while (m_c3LogTable->rowCount() > kMaxLogRows) {
         m_c3LogTable->removeRow(0);

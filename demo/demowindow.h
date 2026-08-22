@@ -13,6 +13,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QComboBox;
+class QListWidget;
 class QSpinBox;
 class QStackedWidget;
 class QTableWidget;
@@ -48,13 +49,13 @@ private:
     bool isModbusWriteFunction() const;
     void updateC3Labels();
     void onC3ConnectClicked();
-    void onC3ViewChanged();
+    void onSidebarRowChanged(int row);
     void refreshC3View();
     void refreshC3RecordCount();
     void pollC3RealtimeLog();
     void rebuildC3TableForKeyValueMap(const QVariantMap &values);
     void rebuildC3TableForRecords(const QVector<QVariantMap> &records);
-    void appendC3LogRow(const QString &time, const QString &details);
+    void appendC3LogRow(const QStringList &cells);
 
     Worker m_worker;
     UpdateChecker m_updateChecker;
@@ -62,7 +63,7 @@ private:
 
     ModbusConnection m_modbus;
     QTimer *m_modbusPollTimer = nullptr;
-    QComboBox *m_protocolCombo = nullptr;
+    QListWidget *m_sidebar = nullptr;
     QStackedWidget *m_protocolStack = nullptr;
     QLineEdit *m_modbusHost = nullptr;
     QSpinBox *m_modbusPort = nullptr;
@@ -81,7 +82,7 @@ private:
     QLineEdit *m_c3Host = nullptr;
     QSpinBox *m_c3Port = nullptr;
     QPushButton *m_btnC3Connect = nullptr;
-    QComboBox *m_c3View = nullptr;
+    int m_lastC3ViewIndex = 0;
     QLabel *m_c3StateLabel = nullptr;
     QStackedWidget *m_c3ViewStack = nullptr;
     QPushButton *m_btnC3Refresh = nullptr;
