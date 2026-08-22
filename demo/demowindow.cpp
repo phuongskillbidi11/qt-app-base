@@ -163,6 +163,12 @@ DemoWindow::DemoWindow() {
     m_modbusTable->verticalHeader()->setVisible(false);
     m_modbusTable->setEditTriggers(QAbstractItemView::DoubleClicked
                                    | QAbstractItemView::EditKeyPressed);
+    // Without this, the table's own content-driven minimum width (7 fixed columns) silently
+    // overrides resize()'s own requested window size -- confirmed live on the real HMI
+    // (F2 of .plans/2026-08-22-demo-ui-sidebar): the window grew back to ~1077px wide
+    // regardless of what resize() asked for. This lets the table shrink and rely on its own
+    // horizontal scrollbar for the rest, instead of forcing the window wider.
+    m_modbusTable->setMinimumWidth(0);
     modbusPageLayout->addWidget(m_modbusTable);
     m_protocolStack->addWidget(modbusPage);
 
@@ -203,6 +209,7 @@ DemoWindow::DemoWindow() {
     m_c3Table = new QTableWidget;
     m_c3Table->verticalHeader()->setVisible(false);
     m_c3Table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_c3Table->setMinimumWidth(0);   // same reasoning as m_modbusTable above
     c3TablePageLayout->addWidget(m_c3Table);
     m_c3ViewStack->addWidget(c3TablePage);
 
@@ -216,6 +223,7 @@ DemoWindow::DemoWindow() {
         {"Time", "CardNo", "Pin", "DoorID", "EventType", "InOutState", "VerifyMode"});
     m_c3LogTable->verticalHeader()->setVisible(false);
     m_c3LogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_c3LogTable->setMinimumWidth(0);   // same reasoning as m_modbusTable above
     c3LogPageLayout->addWidget(m_c3LogTable);
     m_c3ViewStack->addWidget(c3LogPage);
 
