@@ -50,6 +50,7 @@ private:
     void onC3ConnectClicked();
     void onC3ViewChanged();
     void refreshC3View();
+    void refreshC3RecordCount();
     void pollC3RealtimeLog();
     void rebuildC3TableForKeyValueMap(const QVariantMap &values);
     void rebuildC3TableForRecords(const QVector<QVariantMap> &records);
@@ -92,6 +93,9 @@ private:
     QPushButton *m_btnC3DoorOpen = nullptr;
     QPushButton *m_btnC3CancelAlarm = nullptr;
     QLabel *m_c3ControlResultLabel = nullptr;
+    QComboBox *m_c3CountTable = nullptr;
+    QPushButton *m_btnC3CountRefresh = nullptr;
+    QLabel *m_c3CountResultLabel = nullptr;
 
     QLabel *m_workerLabel = nullptr;
 };

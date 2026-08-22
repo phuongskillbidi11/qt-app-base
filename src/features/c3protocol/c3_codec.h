@@ -150,11 +150,29 @@ QByteArray encodeGetDataRequest(int tableIndex, const QVector<int> &fieldIndexes
                                 bool includeSessionBlock, uint16_t sessionId,
                                 int32_t requestNr);
 
-enum class GetDataStatus { Incomplete, Malformed, Rejected, TableMismatch, Ok };
+constexpr uint8_t kCommandPrepareData = 0x0D;
+constexpr uint8_t kCommandTransmitData = 0x0E;
+constexpr uint8_t kCommandFreeData = 0x0F;
+
+// CMD_PREPARE_DATA's reply payload is always exactly 17 bytes -- found by decompiling
+// plcommpro.dll's real GetDeviceData/ZEMBPRO_READCMDDATA internals (interoperability
+// reverse engineering of a closed vendor binary, the same discipline already used for
+// GETDATACOUNT), live-confirmed against a real panel. Sent instead of a normal GETDATA
+// reply whenever the actual payload is too large for one frame.
+struct PrepareDataInfo {
+    bool compressed = false;
+    uint32_t dataLength = 0;
+    uint32_t originalLength = 0;
+    uint32_t checksum = 0;
+    uint32_t packageLength = 0;
+};
+
+enum class GetDataStatus { Incomplete, Malformed, Rejected, TableMismatch, Ok, BigDataPending };
 
 struct GetDataResponse {
     GetDataStatus status = GetDataStatus::Incomplete;
     QVector<QVariantMap> records;   // meaningful only when status == Ok
+    PrepareDataInfo prepareInfo;    // meaningful only when status == BigDataPending
 };
 // `expectedTableIndex` must match the reply's own echoed table index or the result is
 // TableMismatch. `tableFields` must be the DataTableConfig.fields for the table being
@@ -164,6 +182,50 @@ struct GetDataResponse {
 GetDataResponse decodeGetDataResponse(const QByteArray &data, int expectedTableIndex,
                                       const QVector<DataTableField> &tableFields,
                                       bool includeSessionBlock);
+
+// NEW -- the record-parsing logic decodeGetDataResponse already had, extracted so it can
+// also be called directly on a reassembled big-data buffer (no frame markers to strip --
+// see spec.md D3 of .plans/2026-08-22-c3-getdata-bigdata). decodeGetDataResponse itself now
+// calls this internally for its own non-big-data path; behavior for that path is unchanged.
+GetDataResponse parseGetDataPayload(const QByteArray &payload, int expectedTableIndex,
+                                    const QVector<DataTableField> &tableFields);
+
+// CMD_TRANSMIT_DATA request payload is exactly 4 bytes: a little-endian uint32 byte offset
+// into the pending big-data buffer, starting at 0.
+QByteArray encodeTransmitDataRequest(uint32_t offset, bool includeSessionBlock,
+                                     uint16_t sessionId, int32_t requestNr);
+
+// Reply payload is [echoedOffset:4 bytes LE][chunk bytes...] -- echoedOffset must match what
+// was requested; chunk length is the negotiated packageLength except possibly the final,
+// shorter chunk.
+struct TransmitDataResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint32_t offset = 0;
+    QByteArray chunkData;   // meaningful only when status == Ok
+};
+TransmitDataResponse decodeTransmitDataResponse(const QByteArray &data, bool includeSessionBlock);
+
+// CMD_FREE_DATA has an empty request payload; its reply is a bare ack/nack -- reuse the
+// existing decodeGenericReply(data) as-is, no new response type.
+QByteArray encodeFreeDataRequest(bool includeSessionBlock, uint16_t sessionId, int32_t requestNr);
+
+constexpr uint8_t kCommandGetDataCount = 0x0A;
+
+// Request payload is exactly one byte: the table's resolved binary index (from
+// DATATABLE_CFG) -- confirmed live against 8 real tables on a real panel; see spec.md D2
+// of .plans/2026-08-22-c3-getdatacount. NOT the table's ASCII name -- that was tried too and
+// returns Ok with a zero-length payload instead of a count.
+QByteArray encodeGetDataCountRequest(int tableIndex, bool includeSessionBlock,
+                                     uint16_t sessionId, int32_t requestNr);
+
+// Reply payload is always exactly 4 bytes: a little-endian uint32 record count -- confirmed
+// live on 8 different real tables (counts from 0 into the thousands), never a different
+// length on success.
+struct GetDataCountResponse {
+    ResponseStatus status = ResponseStatus::Incomplete;
+    uint32_t count = 0;   // meaningful only when status == Ok
+};
+GetDataCountResponse decodeGetDataCountResponse(const QByteArray &data, bool includeSessionBlock);
 
 constexpr uint8_t kCommandGetParam = 0x04;
 
@@ -181,6 +243,15 @@ struct GetParamResponse {
                           // no assumption all requested names come back
 };
 GetParamResponse decodeGetParamResponse(const QByteArray &data, bool includeSessionBlock);
+
+// SETPARAM reuses kCommandGetParam -- see spec.md D1 of .plans/2026-08-22-c3-setparam:
+// GETPARAM's own request payload is bare comma-separated names ("get"); this request's
+// payload is comma-separated Name=Value pairs ("set") -- same command byte, distinguished
+// by the panel purely on payload shape. QVariant values are converted via .toString().
+// Reply is a bare ack/nack -- decode with the existing decodeGenericReply(data), no new
+// response type.
+QByteArray encodeSetParamRequest(const QVariantMap &values, bool includeSessionBlock,
+                                 uint16_t sessionId, int32_t requestNr);
 
 constexpr uint8_t kCommandControl = 0x05;
 

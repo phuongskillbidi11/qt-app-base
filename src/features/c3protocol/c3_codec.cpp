@@ -45,6 +45,7 @@ using C3Codec::ResponseStatus;
 struct DecodedFrame {
     ResponseStatus status = ResponseStatus::Incomplete;
     QByteArray payload;   // meaningful only when status == Ok
+    uint8_t command = 0;  // the raw reply command byte; meaningful only when status == Ok
 };
 
 DecodedFrame decodeFrameGeneric(const QByteArray &data, bool stripSessionBlock) {
@@ -75,6 +76,7 @@ DecodedFrame decodeFrameGeneric(const QByteArray &data, bool stripSessionBlock) 
     }
     result.status = ResponseStatus::Ok;
     result.payload = payload;
+    result.command = command;
     return result;
 }
 
@@ -262,17 +264,50 @@ GetDataResponse decodeGetDataResponse(const QByteArray &data, int expectedTableI
         response.status = GetDataStatus::Rejected;
         return response;
     }
-    if (frame.payload.size() < 2) {
+    if (frame.command == kCommandPrepareData) {
+        if (frame.payload.size() != 17) {
+            response.status = GetDataStatus::Malformed;
+            return response;
+        }
+        PrepareDataInfo info;
+        info.compressed = byteAt(frame.payload, 0) != 0;
+        info.dataLength = static_cast<uint32_t>(byteAt(frame.payload, 1)) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 2)) << 8) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 3)) << 16) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 4)) << 24);
+        info.originalLength = static_cast<uint32_t>(byteAt(frame.payload, 5)) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 6)) << 8) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 7)) << 16) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 8)) << 24);
+        info.checksum = static_cast<uint32_t>(byteAt(frame.payload, 9)) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 10)) << 8) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 11)) << 16) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 12)) << 24);
+        info.packageLength = static_cast<uint32_t>(byteAt(frame.payload, 13)) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 14)) << 8) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 15)) << 16) |
+            (static_cast<uint32_t>(byteAt(frame.payload, 16)) << 24);
+        response.status = GetDataStatus::BigDataPending;
+        response.prepareInfo = info;
+        return response;
+    }
+    return parseGetDataPayload(frame.payload, expectedTableIndex, tableFields);
+}
+
+GetDataResponse parseGetDataPayload(const QByteArray &payload, int expectedTableIndex,
+                                    const QVector<DataTableField> &tableFields) {
+    GetDataResponse response;
+    if (payload.size() < 2) {
         response.status = GetDataStatus::Malformed;
         return response;
     }
 
-    if (byteAt(frame.payload, 0) != static_cast<uint8_t>(expectedTableIndex)) {
+    if (byteAt(payload, 0) != static_cast<uint8_t>(expectedTableIndex)) {
         response.status = GetDataStatus::TableMismatch;
         return response;
     }
-    const int fieldCount = byteAt(frame.payload, 1);
-    if (frame.payload.size() < 2 + fieldCount) {
+    const int fieldCount = byteAt(payload, 1);
+    if (payload.size() < 2 + fieldCount) {
         response.status = GetDataStatus::Malformed;
         return response;
     }
@@ -280,7 +315,7 @@ GetDataResponse decodeGetDataResponse(const QByteArray &data, int expectedTableI
     QVector<const DataTableField *> returnedFields;
     returnedFields.reserve(fieldCount);
     for (int fieldOffset = 0; fieldOffset < fieldCount; ++fieldOffset) {
-        const int returnedIndex = byteAt(frame.payload, 2 + fieldOffset);
+        const int returnedIndex = byteAt(payload, 2 + fieldOffset);
         const DataTableField *matchingField = nullptr;
         for (const DataTableField &field : tableFields) {
             if (field.index == returnedIndex) {
@@ -296,20 +331,20 @@ GetDataResponse decodeGetDataResponse(const QByteArray &data, int expectedTableI
     }
 
     int offset = 2 + fieldCount;
-    if (returnedFields.isEmpty() && offset != frame.payload.size()) {
+    if (returnedFields.isEmpty() && offset != payload.size()) {
         response.status = GetDataStatus::Malformed;
         return response;
     }
-    while (offset < frame.payload.size()) {
+    while (offset < payload.size()) {
         QVariantMap record;
         for (const DataTableField *field : returnedFields) {
-            if (offset >= frame.payload.size()) {
+            if (offset >= payload.size()) {
                 response.status = GetDataStatus::Malformed;
                 response.records.clear();
                 return response;
             }
-            const int valueSize = byteAt(frame.payload, offset++);
-            if (valueSize > frame.payload.size() - offset) {
+            const int valueSize = byteAt(payload, offset++);
+            if (valueSize > payload.size() - offset) {
                 response.status = GetDataStatus::Malformed;
                 response.records.clear();
                 return response;
@@ -323,13 +358,13 @@ GetDataResponse decodeGetDataResponse(const QByteArray &data, int expectedTableI
                 }
                 qint64 value = 0;
                 for (int byteIndex = 0; byteIndex < valueSize; ++byteIndex) {
-                    value |= static_cast<qint64>(byteAt(frame.payload, offset + byteIndex))
+                    value |= static_cast<qint64>(byteAt(payload, offset + byteIndex))
                              << (8 * byteIndex);
                 }
                 record.insert(field->name, QVariant::fromValue<qlonglong>(value));
             } else if (field->type == 's') {
                 record.insert(field->name,
-                              QString::fromLatin1(frame.payload.constData() + offset, valueSize));
+                              QString::fromLatin1(payload.constData() + offset, valueSize));
             } else {
                 response.status = GetDataStatus::Malformed;
                 response.records.clear();
@@ -341,6 +376,64 @@ GetDataResponse decodeGetDataResponse(const QByteArray &data, int expectedTableI
     }
 
     response.status = GetDataStatus::Ok;
+    return response;
+}
+
+QByteArray encodeTransmitDataRequest(uint32_t offset, bool includeSessionBlock,
+                                     uint16_t sessionId, int32_t requestNr) {
+    QByteArray payload(4, '\0');
+    payload[0] = static_cast<char>(offset & 0xFF);
+    payload[1] = static_cast<char>((offset >> 8) & 0xFF);
+    payload[2] = static_cast<char>((offset >> 16) & 0xFF);
+    payload[3] = static_cast<char>((offset >> 24) & 0xFF);
+    return encodeFrame(kCommandTransmitData, sessionId, requestNr, payload, includeSessionBlock);
+}
+
+TransmitDataResponse decodeTransmitDataResponse(const QByteArray &data, bool includeSessionBlock) {
+    TransmitDataResponse response;
+    const DecodedFrame frame = decodeFrameGeneric(data, includeSessionBlock);
+    response.status = frame.status;
+    if (frame.status != ResponseStatus::Ok) {
+        return response;
+    }
+    if (frame.payload.size() < 4) {
+        response.status = ResponseStatus::Malformed;
+        return response;
+    }
+    response.offset = static_cast<uint32_t>(byteAt(frame.payload, 0)) |
+        (static_cast<uint32_t>(byteAt(frame.payload, 1)) << 8) |
+        (static_cast<uint32_t>(byteAt(frame.payload, 2)) << 16) |
+        (static_cast<uint32_t>(byteAt(frame.payload, 3)) << 24);
+    response.chunkData = frame.payload.mid(4);
+    return response;
+}
+
+QByteArray encodeFreeDataRequest(bool includeSessionBlock, uint16_t sessionId, int32_t requestNr) {
+    return encodeFrame(kCommandFreeData, sessionId, requestNr, {}, includeSessionBlock);
+}
+
+QByteArray encodeGetDataCountRequest(int tableIndex, bool includeSessionBlock,
+                                     uint16_t sessionId, int32_t requestNr) {
+    const QByteArray payload(1, static_cast<char>(tableIndex));
+    return encodeFrame(kCommandGetDataCount, sessionId, requestNr, payload, includeSessionBlock);
+}
+
+GetDataCountResponse decodeGetDataCountResponse(const QByteArray &data, bool includeSessionBlock) {
+    GetDataCountResponse response;
+    const DecodedFrame frame = decodeFrameGeneric(data, includeSessionBlock);
+    if (frame.status == ResponseStatus::Ok && frame.payload.size() != 4) {
+        response.status = ResponseStatus::Malformed;
+        return response;
+    }
+    response.status = frame.status;
+    if (frame.status != ResponseStatus::Ok) {
+        return response;
+    }
+    response.count = static_cast<uint32_t>(
+        static_cast<uint8_t>(frame.payload[0])) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(frame.payload[1])) << 8) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(frame.payload[2])) << 16) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(frame.payload[3])) << 24);
     return response;
 }
 
@@ -460,6 +553,16 @@ GetParamResponse decodeGetParamResponse(const QByteArray &data, bool includeSess
         }
     }
     return response;
+}
+
+QByteArray encodeSetParamRequest(const QVariantMap &values, bool includeSessionBlock,
+                                 uint16_t sessionId, int32_t requestNr) {
+    QStringList pairs;
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+        pairs << QStringLiteral("%1=%2").arg(it.key(), it.value().toString());
+    }
+    const QByteArray payload = pairs.join(QLatin1Char(',')).toLatin1();
+    return encodeFrame(kCommandGetParam, sessionId, requestNr, payload, includeSessionBlock);
 }
 
 }  // namespace C3Codec

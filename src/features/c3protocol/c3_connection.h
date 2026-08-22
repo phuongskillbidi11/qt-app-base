@@ -26,8 +26,10 @@ public:
     void connectToHost(const QString &host, quint16 port);
     void disconnectNow();
     void requestTableData(const QString &tableName);
+    void requestTableRecordCount(const QString &tableName);
     void requestRealtimeLog();
     void requestDeviceParams(const QStringList &parameterNames);
+    void setDeviceParams(const QVariantMap &values);
     void controlDoorOutput(uint8_t doorNumber, uint8_t durationSeconds);   // 1-254 only; for 0
                                                                         // or 255 use the
                                                                         // dedicated methods
@@ -49,17 +51,23 @@ signals:
     void sessionFailed(QString error);
     void tableDataReceived(QString tableName, QVector<QVariantMap> records);
     void tableDataFailed(QString tableName, QString error);
+    void tableRecordCountReceived(QString tableName, quint32 count);
+    void tableRecordCountFailed(QString tableName, QString error);
     void realtimeLogReceived(QVector<C3Codec::RtLogRecord> records);
     void realtimeLogKeyValueReceived(QVector<QVariantMap> records);
     void realtimeLogFailed(QString error);
     void deviceParamsReceived(QVariantMap values);
     void deviceParamsFailed(QString error);
+    void setParamsAcknowledged();
+    void setParamsFailed(QString error);
     void controlAcknowledged();
     void controlFailed(QString error);
 
 private:
     enum class HandshakeStep { None, AwaitingSessionReply, AwaitingSessionLessReply };
-    enum class DataQueryStep { None, AwaitingTableConfig, AwaitingTableData };
+    enum class DataQueryStep { None, AwaitingTableConfig, AwaitingTableData,
+                               AwaitingBigDataChunk, AwaitingFreeDataAck };
+    enum class CountQueryStep { None, AwaitingTableConfig, AwaitingCount };
     enum class RtLogQueryStep { None, AwaitingBinaryReply, AwaitingKeyValueReply };
 
     void onSocketConnected();
@@ -67,9 +75,11 @@ private:
     void onSocketReadyRead();
     void onHandshakeTimeout();
     void onDataQueryTimeout();
+    void onCountQueryTimeout();
     void onRtLogQueryTimeout();
     void onControlTimeout();
     void onGetParamTimeout();
+    void onSetParamTimeout();
     void sendControlRequest(C3Codec::ControlOperation operation, uint8_t param1, uint8_t param2,
                             uint8_t param3);
 
@@ -88,6 +98,13 @@ private:
     QTimer dataQueryTimer_;
     C3Codec::DataTableConfig tableConfig_;
     QString pendingTableName_;
+    QByteArray bigDataBuffer_;
+    uint32_t bigDataExpectedLength_ = 0;
+    bool countQueryPending_ = false;
+    CountQueryStep countQueryStep_ = CountQueryStep::None;
+    QTimer countQueryTimer_;
+    int countTableIndex_ = -1;
+    QString pendingCountTableName_;
     bool rtLogQueryPending_ = false;
     RtLogQueryStep rtLogQueryStep_ = RtLogQueryStep::None;
     QTimer rtLogQueryTimer_;
@@ -95,6 +112,8 @@ private:
     QTimer controlTimer_;
     bool getParamPending_ = false;
     QTimer getParamTimer_;
+    bool setParamPending_ = false;
+    QTimer setParamTimer_;
     uint8_t rtlogCommand_ = C3Codec::kCommandRtlogBinary;   // persists across calls -- once
                                                           // switched to key/value it stays
                                                           // switched, matching

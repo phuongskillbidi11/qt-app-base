@@ -198,9 +198,13 @@ int main() {
         const QByteArray realOddReply = QByteArray::fromHex("AA200D1100005D8900005D89000075209643F4130000951655");
         const C3Codec::GetDataResponse data =
             C3Codec::decodeGetDataResponse(realOddReply, 5, txnFieldsReal, false);
-        check(data.status == C3Codec::GetDataStatus::TableMismatch,
-              "a real, unrecognized-command reply (0x0D, live-captured) is now a structurally-"
-              "valid TableMismatch instead of a blanket Malformed");
+        check(data.status == C3Codec::GetDataStatus::BigDataPending &&
+                  !data.prepareInfo.compressed && data.prepareInfo.dataLength == 35165 &&
+                  data.prepareInfo.checksum == 0x43962075u &&
+                  data.prepareInfo.packageLength == 5108,
+              "this real 0x0D reply (originally misread as TableMismatch, then suspected a "
+              "firmware exception dump) is CMD_PREPARE_DATA -- the old panel's own "
+              "'transaction' table is simply too large for one frame, same as the new panel");
     }
 
     check(C3Codec::encodeRtlogBinaryRequest(false, 0, 0) ==
@@ -324,6 +328,81 @@ int main() {
                   resp.values["AuxInCount"].toString() == "4" &&
                   resp.values["AuxOutCount"].toString() == "4",
               "decode reads a self-authored six-parameter GETPARAM response correctly");
+    }
+
+    check(C3Codec::encodeSetParamRequest(
+              {{"Door1ForcePassWord", "12345678"}, {"Door2ForcePassWord", "87654321"}},
+              false, 0, 0) ==
+              QByteArray::fromHex(
+                  "AA01043700446F6F7231466F72636550617373576F72643D31323334353637382C446F6F72"
+                  "32466F72636550617373576F72643D38373635343332316D6455"),
+          "encode produces Name=Value comma pairs in ascending key order, reusing kCommandGetParam");
+
+    check(C3Codec::encodeGetDataCountRequest(5, false, 0, 0) ==
+              QByteArray::fromHex("AA010A010005AFDB55"),
+          "encode produces a one-byte table-index GETDATACOUNT request");
+
+    {
+        const QByteArray reply = QByteArray::fromHex("AA01C80400C1180000347F55");
+        const C3Codec::GetDataCountResponse resp = C3Codec::decodeGetDataCountResponse(reply, false);
+        check(resp.status == C3Codec::ResponseStatus::Ok && resp.count == 6337,
+              "decode reads a real captured GETDATACOUNT reply (transaction table) as 6337");
+    }
+
+    {
+        const QByteArray reply = QByteArray::fromHex("AA01C8040000000000898455");
+        const C3Codec::GetDataCountResponse resp = C3Codec::decodeGetDataCountResponse(reply, false);
+        check(resp.status == C3Codec::ResponseStatus::Ok && resp.count == 0,
+              "decode reads a zero-count GETDATACOUNT reply correctly");
+    }
+
+    {
+        // Real captured CMD_PREPARE_DATA reply (192.168.2.165, transaction table, today).
+        const QByteArray prepareReply = QByteArray::fromHex(
+            "AA010D110000E3B10100E3B1010050FDEE7EF4130000EC7D55");
+        const C3Codec::GetDataResponse resp = C3Codec::decodeGetDataResponse(
+            prepareReply, 5, {}, false);
+        check(resp.status == C3Codec::GetDataStatus::BigDataPending &&
+                  !resp.prepareInfo.compressed && resp.prepareInfo.dataLength == 111075 &&
+                  resp.prepareInfo.originalLength == 111075 &&
+                  resp.prepareInfo.checksum == 0x7EEEFD50u &&
+                  resp.prepareInfo.packageLength == 5108,
+              "decode reads a real CMD_PREPARE_DATA reply correctly");
+    }
+
+    check(C3Codec::encodeTransmitDataRequest(0, false, 0, 0) ==
+              QByteArray::fromHex("AA010E0400000000002F8855"),
+          "encode produces a real CMD_TRANSMIT_DATA request (offset=0)");
+
+    {
+        const QByteArray chunkReply = QByteArray::fromHex("AA01C80800640000004142434428BA55");
+        const C3Codec::TransmitDataResponse resp =
+            C3Codec::decodeTransmitDataResponse(chunkReply, false);
+        check(resp.status == C3Codec::ResponseStatus::Ok && resp.offset == 100 &&
+                  resp.chunkData == QByteArray("ABCD"),
+              "decode reads a self-authored CMD_TRANSMIT_DATA reply (offset=100, chunk=ABCD)");
+    }
+
+    check(C3Codec::encodeFreeDataRequest(false, 0, 0) ==
+              QByteArray::fromHex("AA010F000031FF55"),
+          "encode produces a real CMD_FREE_DATA request");
+
+    {
+        // Same payload bytes as the existing real 2-record 'user' table fixture above -- proves
+        // parseGetDataPayload (the extraction) produces identical results when called directly
+        // on a payload, with no frame to strip.
+        const QVector<C3Codec::DataTableField> userFields = {
+            {"UID", 'i', 1}, {"CardNo", 'i', 2}, {"Pin", 'i', 3}, {"Password", 's', 4},
+            {"Group", 'i', 5}, {"StartTime", 'i', 6}, {"EndTime", 'i', 7}, {"Name", 's', 8},
+            {"SuperAuthorize", 'i', 9}};
+        const QByteArray payload = QByteArray::fromHex(
+            "010901020304050607080901010387D6120376543200010001000100000100010203A1A3A303B1B2"
+            "B3000100042A893401049FB03401000100");
+        const C3Codec::GetDataResponse data =
+            C3Codec::parseGetDataPayload(payload, 1, userFields);
+        check(data.status == C3Codec::GetDataStatus::Ok && data.records.size() == 2 &&
+                  data.records[0]["CardNo"].toLongLong() == 1234567,
+              "parseGetDataPayload reads the same real fixture directly, with no frame to strip");
     }
 
     return allPassed ? 0 : 1;

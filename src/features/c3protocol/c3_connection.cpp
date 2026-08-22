@@ -18,12 +18,16 @@ C3Connection::C3Connection(QObject *parent) : ProtocolDriver(parent) {
     connect(&handshakeTimer_, &QTimer::timeout, this, &C3Connection::onHandshakeTimeout);
     dataQueryTimer_.setSingleShot(true);
     connect(&dataQueryTimer_, &QTimer::timeout, this, &C3Connection::onDataQueryTimeout);
+    countQueryTimer_.setSingleShot(true);
+    connect(&countQueryTimer_, &QTimer::timeout, this, &C3Connection::onCountQueryTimeout);
     rtLogQueryTimer_.setSingleShot(true);
     connect(&rtLogQueryTimer_, &QTimer::timeout, this, &C3Connection::onRtLogQueryTimeout);
     controlTimer_.setSingleShot(true);
     connect(&controlTimer_, &QTimer::timeout, this, &C3Connection::onControlTimeout);
     getParamTimer_.setSingleShot(true);
     connect(&getParamTimer_, &QTimer::timeout, this, &C3Connection::onGetParamTimeout);
+    setParamTimer_.setSingleShot(true);
+    connect(&setParamTimer_, &QTimer::timeout, this, &C3Connection::onSetParamTimeout);
 }
 
 C3Connection::~C3Connection() = default;
@@ -59,6 +63,9 @@ void C3Connection::onSocketError() {
     dataQueryPending_ = false;
     dataQueryStep_ = DataQueryStep::None;
     dataQueryTimer_.stop();
+    countQueryPending_ = false;
+    countQueryStep_ = CountQueryStep::None;
+    countQueryTimer_.stop();
     rtLogQueryPending_ = false;
     rtLogQueryStep_ = RtLogQueryStep::None;
     rtLogQueryTimer_.stop();
@@ -66,6 +73,8 @@ void C3Connection::onSocketError() {
     controlTimer_.stop();
     getParamPending_ = false;
     getParamTimer_.stop();
+    setParamPending_ = false;
+    setParamTimer_.stop();
     if (connectAttemptPending_) {
         connectAttemptPending_ = false;
         handshakeStep_ = HandshakeStep::None;
@@ -177,6 +186,25 @@ void C3Connection::onSocketReadyRead() {
             if (response.status == C3Codec::GetDataStatus::Incomplete) return;
             dataQueryTimer_.stop();
             readBuffer_.clear();
+            if (response.status == C3Codec::GetDataStatus::BigDataPending) {
+                if (response.prepareInfo.compressed) {
+                    dataQueryPending_ = false;
+                    dataQueryStep_ = DataQueryStep::None;
+                    emit tableDataFailed(
+                        pendingTableName_,
+                        QStringLiteral("'%1' table reply is compressed -- not supported")
+                            .arg(pendingTableName_));
+                    return;
+                }
+                bigDataBuffer_.clear();
+                bigDataExpectedLength_ = response.prepareInfo.dataLength;
+                dataQueryStep_ = DataQueryStep::AwaitingBigDataChunk;
+                socket_.write(C3Codec::encodeTransmitDataRequest(0, !sessionLess_, sessionId_,
+                                                                  requestNr_));
+                if (!sessionLess_) ++requestNr_;
+                dataQueryTimer_.start(kHandshakeTimeoutMs);
+                return;
+            }
             dataQueryPending_ = false;
             dataQueryStep_ = DataQueryStep::None;
             if (response.status == C3Codec::GetDataStatus::Ok) {
@@ -184,6 +212,52 @@ void C3Connection::onSocketReadyRead() {
             } else {
                 emit tableDataFailed(pendingTableName_,
                                      QStringLiteral("failed to fetch '%1' table GETDATA").arg(pendingTableName_));
+            }
+        } else if (dataQueryStep_ == DataQueryStep::AwaitingBigDataChunk) {
+            const C3Codec::TransmitDataResponse response =
+                C3Codec::decodeTransmitDataResponse(readBuffer_, !sessionLess_);
+            if (response.status == C3Codec::ResponseStatus::Incomplete) return;
+            dataQueryTimer_.stop();
+            readBuffer_.clear();
+            if (response.status != C3Codec::ResponseStatus::Ok ||
+                response.offset != static_cast<uint32_t>(bigDataBuffer_.size())) {
+                dataQueryPending_ = false;
+                dataQueryStep_ = DataQueryStep::None;
+                emit tableDataFailed(pendingTableName_,
+                                     QStringLiteral("failed to fetch '%1' table big-data chunk")
+                                         .arg(pendingTableName_));
+                return;
+            }
+            bigDataBuffer_.append(response.chunkData);
+            if (static_cast<uint32_t>(bigDataBuffer_.size()) < bigDataExpectedLength_) {
+                dataQueryStep_ = DataQueryStep::AwaitingBigDataChunk;
+                socket_.write(C3Codec::encodeTransmitDataRequest(
+                    static_cast<uint32_t>(bigDataBuffer_.size()), !sessionLess_, sessionId_,
+                    requestNr_));
+                if (!sessionLess_) ++requestNr_;
+                dataQueryTimer_.start(kHandshakeTimeoutMs);
+                return;
+            }
+            dataQueryStep_ = DataQueryStep::AwaitingFreeDataAck;
+            socket_.write(C3Codec::encodeFreeDataRequest(!sessionLess_, sessionId_, requestNr_));
+            if (!sessionLess_) ++requestNr_;
+            dataQueryTimer_.start(kHandshakeTimeoutMs);
+        } else if (dataQueryStep_ == DataQueryStep::AwaitingFreeDataAck) {
+            const C3Codec::GenericReply response = C3Codec::decodeGenericReply(readBuffer_);
+            if (response.status == C3Codec::ResponseStatus::Incomplete) return;
+            dataQueryTimer_.stop();
+            readBuffer_.clear();
+            dataQueryPending_ = false;
+            dataQueryStep_ = DataQueryStep::None;
+            const C3Codec::GetDataResponse parsed = C3Codec::parseGetDataPayload(
+                bigDataBuffer_, tableConfig_.index, tableConfig_.fields);
+            bigDataBuffer_.clear();
+            if (parsed.status == C3Codec::GetDataStatus::Ok) {
+                emit tableDataReceived(pendingTableName_, parsed.records);
+            } else {
+                emit tableDataFailed(pendingTableName_,
+                                     QStringLiteral("failed to parse assembled '%1' table data")
+                                         .arg(pendingTableName_));
             }
         }
     }
@@ -256,6 +330,72 @@ void C3Connection::onSocketReadyRead() {
         }
         return;
     }
+    if (setParamPending_) {
+        readBuffer_.append(socket_.readAll());
+        const C3Codec::GenericReply reply = C3Codec::decodeGenericReply(readBuffer_);
+        if (reply.status == C3Codec::ResponseStatus::Incomplete) return;
+        setParamTimer_.stop();
+        readBuffer_.clear();
+        setParamPending_ = false;
+        if (reply.status == C3Codec::ResponseStatus::Ok) {
+            emit setParamsAcknowledged();
+        } else {
+            emit setParamsFailed(QStringLiteral("SETPARAM request failed"));
+        }
+        return;
+    }
+    if (countQueryPending_) {
+        readBuffer_.append(socket_.readAll());
+        if (countQueryStep_ == CountQueryStep::AwaitingTableConfig) {
+            const C3Codec::DataTableConfigResponse response =
+                C3Codec::decodeDataTableConfigResponse(readBuffer_, !sessionLess_);
+            if (response.status == C3Codec::ResponseStatus::Incomplete) return;
+            countQueryTimer_.stop();
+            readBuffer_.clear();
+            if (response.status != C3Codec::ResponseStatus::Ok) {
+                countQueryPending_ = false;
+                countQueryStep_ = CountQueryStep::None;
+                emit tableRecordCountFailed(pendingCountTableName_,
+                                            QStringLiteral("failed to fetch DATATABLE_CFG"));
+                return;
+            }
+            const C3Codec::DataTableConfig *matchedTable = nullptr;
+            for (const auto &table : response.tables) {
+                if (table.name == pendingCountTableName_) { matchedTable = &table; break; }
+            }
+            if (!matchedTable) {
+                countQueryPending_ = false;
+                countQueryStep_ = CountQueryStep::None;
+                emit tableRecordCountFailed(
+                    pendingCountTableName_,
+                    QStringLiteral("panel has no '%1' table").arg(pendingCountTableName_));
+                return;
+            }
+            countTableIndex_ = matchedTable->index;
+            countQueryStep_ = CountQueryStep::AwaitingCount;
+            socket_.write(C3Codec::encodeGetDataCountRequest(countTableIndex_, !sessionLess_,
+                                                              sessionId_, requestNr_));
+            if (!sessionLess_) ++requestNr_;
+            countQueryTimer_.start(kHandshakeTimeoutMs);
+        } else if (countQueryStep_ == CountQueryStep::AwaitingCount) {
+            const C3Codec::GetDataCountResponse response =
+                C3Codec::decodeGetDataCountResponse(readBuffer_, !sessionLess_);
+            if (response.status == C3Codec::ResponseStatus::Incomplete) return;
+            countQueryTimer_.stop();
+            readBuffer_.clear();
+            countQueryPending_ = false;
+            countQueryStep_ = CountQueryStep::None;
+            if (response.status == C3Codec::ResponseStatus::Ok) {
+                emit tableRecordCountReceived(pendingCountTableName_, response.count);
+            } else {
+                emit tableRecordCountFailed(
+                    pendingCountTableName_,
+                    QStringLiteral("failed to fetch '%1' table GETDATACOUNT")
+                        .arg(pendingCountTableName_));
+            }
+        }
+        return;
+    }
 }
 
 void C3Connection::requestTableData(const QString &tableName) {
@@ -273,6 +413,24 @@ void C3Connection::onDataQueryTimeout() {
     dataQueryPending_ = false;
     dataQueryStep_ = DataQueryStep::None;
     emit tableDataFailed(pendingTableName_, QStringLiteral("table data query timed out"));
+}
+
+void C3Connection::requestTableRecordCount(const QString &tableName) {
+    if (!isReady() || countQueryPending_) return;
+    countQueryPending_ = true;
+    countQueryStep_ = CountQueryStep::AwaitingTableConfig;
+    pendingCountTableName_ = tableName;
+    readBuffer_.clear();
+    socket_.write(C3Codec::encodeDataTableConfigRequest(!sessionLess_, sessionId_, requestNr_));
+    if (!sessionLess_) ++requestNr_;
+    countQueryTimer_.start(kHandshakeTimeoutMs);
+}
+
+void C3Connection::onCountQueryTimeout() {
+    countQueryPending_ = false;
+    countQueryStep_ = CountQueryStep::None;
+    emit tableRecordCountFailed(pendingCountTableName_,
+                                QStringLiteral("table record count query timed out"));
 }
 
 void C3Connection::requestRealtimeLog() {
@@ -362,6 +520,21 @@ void C3Connection::onGetParamTimeout() {
     emit deviceParamsFailed(QStringLiteral("GETPARAM request timed out"));
 }
 
+void C3Connection::setDeviceParams(const QVariantMap &values) {
+    if (!isReady() || setParamPending_) return;
+    setParamPending_ = true;
+    readBuffer_.clear();
+    socket_.write(C3Codec::encodeSetParamRequest(values, !sessionLess_, sessionId_,
+                                                  requestNr_));
+    if (!sessionLess_) ++requestNr_;
+    setParamTimer_.start(kHandshakeTimeoutMs);
+}
+
+void C3Connection::onSetParamTimeout() {
+    setParamPending_ = false;
+    emit setParamsFailed(QStringLiteral("SETPARAM request timed out"));
+}
+
 void C3Connection::disconnectNow() {
     if ((sessionId_ != 0 || sessionLess_) && socket_.state() == QAbstractSocket::ConnectedState) {
         if (sessionLess_) {
@@ -378,6 +551,9 @@ void C3Connection::disconnectNow() {
     dataQueryPending_ = false;
     dataQueryStep_ = DataQueryStep::None;
     dataQueryTimer_.stop();
+    countQueryPending_ = false;
+    countQueryStep_ = CountQueryStep::None;
+    countQueryTimer_.stop();
     rtLogQueryPending_ = false;
     rtLogQueryStep_ = RtLogQueryStep::None;
     rtLogQueryTimer_.stop();
@@ -385,6 +561,8 @@ void C3Connection::disconnectNow() {
     controlTimer_.stop();
     getParamPending_ = false;
     getParamTimer_.stop();
+    setParamPending_ = false;
+    setParamTimer_.stop();
     state_.disconnectNow();
 }
 

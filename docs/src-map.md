@@ -184,6 +184,18 @@ door/aux counts, or any other named parameter the panel supports) via
 `C3Connection::requestDeviceParams(names)`, reusing the same kv-text parser as
 `DATATABLE_CFG`/`RTLOG_KEYVALUE`; see `.plans/2026-08-21-c3-getparam/spec.md`. Read-only --
 no parameter-write command implemented yet.
+Also writes device parameters (`SETPARAM` -- reuses the `GETPARAM` command byte, payload
+shape `Name=Value` pairs instead of bare names) via `C3Connection::setDeviceParams(values)`;
+see `.plans/2026-08-22-c3-setparam/spec.md`. No demo UI hookup yet.
+Also reads a table's own record count (`GETDATACOUNT` -- command `0x0A`, found via Ghidra
+decompilation of the vendor's closed-source `plcommpro.dll` since neither `zkaccess-c3-py` nor
+the vendor's own docs expose this wire command; cross-validated live against 8 real tables) via
+`C3Connection::requestTableRecordCount(tableName)`; see
+`.plans/2026-08-22-c3-getdatacount/spec.md`. No filter support, no demo UI hookup yet.
+`requestTableData()` also transparently handles tables whose GETDATA reply is too large for
+one frame (`CMD_PREPARE_DATA`/`CMD_TRANSMIT_DATA`/`CMD_FREE_DATA`, commands `0x0D`/`0x0E`/
+`0x0F` -- found via Ghidra decompilation of `plcommpro.dll`; solves the long-standing
+`transaction`-table mystery from earlier phases). Callers see no difference.
 
 ---
 

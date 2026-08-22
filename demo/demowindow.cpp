@@ -40,6 +40,7 @@ constexpr int kC3ViewUsers = 1;
 constexpr int kC3ViewTemplates = 2;
 constexpr int kC3ViewRealtimeLog = 3;
 constexpr int kC3ViewControl = 4;
+constexpr int kC3ViewRecordCount = 5;
 }  // namespace
 
 DemoWindow::DemoWindow() {
@@ -193,6 +194,7 @@ DemoWindow::DemoWindow() {
     m_c3View->addItem("Templates");
     m_c3View->addItem("Real-time Log");
     m_c3View->addItem("Control");
+    m_c3View->addItem("Record Count");
     c3ViewLayout->addWidget(m_c3View);
     c3PageLayout->addWidget(c3ViewRow);
 
@@ -257,6 +259,35 @@ DemoWindow::DemoWindow() {
     c3ControlPageLayout->addWidget(m_c3ControlResultLabel);
     c3ControlPageLayout->addStretch(1);
     m_c3ViewStack->addWidget(c3ControlPage);
+
+    // Stack page 3 -- Record Count. A single number, not a table -- gets its own page the
+    // same way Control did (spec.md D1 of .plans/2026-08-22-c3-getdatacount-ui).
+    auto *c3CountPage = new QWidget;
+    auto *c3CountPageLayout = new QVBoxLayout(c3CountPage);
+    c3CountPageLayout->setContentsMargins(0, 0, 0, 0);
+    auto *c3CountRow = new QWidget;
+    auto *c3CountRowLayout = new QHBoxLayout(c3CountRow);
+    c3CountRowLayout->setContentsMargins(0, 0, 0, 0);
+    c3CountRowLayout->addWidget(new QLabel("Table:"));
+    m_c3CountTable = new QComboBox;
+    // Exactly the 8 table names this session's own live GETDATACOUNT testing cross-validated
+    // against a real panel -- a dropdown of known-good names, not free text (spec.md D2).
+    m_c3CountTable->addItem("user");
+    m_c3CountTable->addItem("userauthorize");
+    m_c3CountTable->addItem("holiday");
+    m_c3CountTable->addItem("timezone");
+    m_c3CountTable->addItem("transaction");
+    m_c3CountTable->addItem("firstcard");
+    m_c3CountTable->addItem("multicard");
+    m_c3CountTable->addItem("inoutfun");
+    c3CountRowLayout->addWidget(m_c3CountTable);
+    m_btnC3CountRefresh = new QPushButton("Refresh");
+    c3CountRowLayout->addWidget(m_btnC3CountRefresh);
+    c3CountPageLayout->addWidget(c3CountRow);
+    m_c3CountResultLabel = new QLabel("Count: -");
+    c3CountPageLayout->addWidget(m_c3CountResultLabel);
+    c3CountPageLayout->addStretch(1);
+    m_c3ViewStack->addWidget(c3CountPage);
 
     c3PageLayout->addWidget(m_c3ViewStack);
     m_protocolStack->addWidget(c3Page);
@@ -390,6 +421,9 @@ DemoWindow::DemoWindow() {
         m_c3.cancelAlarm();
         m_c3ControlResultLabel->setText("Last result: sent, waiting...");
     });
+    connect(m_btnC3CountRefresh, &QPushButton::clicked, this, [this]() { refreshC3RecordCount(); });
+    connect(m_c3CountTable, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { refreshC3RecordCount(); });
 
     connect(&m_c3, &ProtocolDriver::connectionStateChanged, this, [this](bool) {
         updateC3Labels();
@@ -446,6 +480,14 @@ DemoWindow::DemoWindow() {
     });
     connect(&m_c3, &C3Connection::controlFailed, this, [this](QString error) {
         m_c3ControlResultLabel->setText("Last result: failed -- " + error);
+    });
+    connect(&m_c3, &C3Connection::tableRecordCountReceived, this,
+            [this](QString /*tableName*/, quint32 count) {
+        m_c3CountResultLabel->setText(QString("Count: %1").arg(count));
+    });
+    connect(&m_c3, &C3Connection::tableRecordCountFailed, this,
+            [this](QString tableName, QString error) {
+        m_c3CountResultLabel->setText(QString("Count: failed -- %1 (%2)").arg(error, tableName));
     });
 
     m_c3LogPollTimer = new QTimer(this);
@@ -792,10 +834,14 @@ void DemoWindow::onC3ViewChanged() {
         stackIndex = 1;
     } else if (index == kC3ViewControl) {
         stackIndex = 2;
+    } else if (index == kC3ViewRecordCount) {
+        stackIndex = 3;
     }
     m_c3ViewStack->setCurrentIndex(stackIndex);
     if (stackIndex == 0) {
         refreshC3View();
+    } else if (stackIndex == 3) {
+        refreshC3RecordCount();
     }
 }
 
@@ -817,6 +863,13 @@ void DemoWindow::refreshC3View() {
     default:
         break;   // Real-time Log and Control are not fetched this way
     }
+}
+
+void DemoWindow::refreshC3RecordCount() {
+    if (!m_c3.isReady()) {
+        return;
+    }
+    m_c3.requestTableRecordCount(m_c3CountTable->currentText());
 }
 
 void DemoWindow::pollC3RealtimeLog() {
