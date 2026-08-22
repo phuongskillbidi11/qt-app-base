@@ -529,6 +529,15 @@ DemoWindow::DemoWindow() {
     updateModbusLabels();
     m_sidebar->setCurrentRow(0);
     updateC3Labels();
+
+    // Overrides whatever minimum size the layout would otherwise compute from its
+    // widest row of controls -- confirmed live on the real HMI (F2 of
+    // .plans/2026-08-22-demo-ui-sidebar) that without this, the window's own X11 size
+    // hints reported a ~1077px-wide floor no matter what resize() requested, even after
+    // T19 already removed the three tables' own contribution to it. This is the
+    // authoritative, last-word override for a QMainWindow; content that still doesn't
+    // fit within the resulting size relies on individual widgets' own scrollbars.
+    setMinimumSize(1, 1);
 }
 
 void DemoWindow::raiseToFront() {
