@@ -47,7 +47,7 @@ constexpr int kC3ViewRecordCount = 6;
 
 DemoWindow::DemoWindow() {
     setWindowTitle("qt-app-base demo");
-    resize(1000, 560);
+    resize(900, 480);
 
     m_workerLabel = new QLabel("Worker: idle");
     auto *btnBlock = new QPushButton("Run a 3s blocking call");
