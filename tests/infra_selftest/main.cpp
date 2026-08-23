@@ -104,6 +104,84 @@ int main(int argc, char *argv[]) {
                     ? "(none)" : qPrintable(Platform::curlExecutablePath()),
                 Platform::supportsSelfUpdate() ? "yes" : "no");
 
+    // --- parseMemInfo: both real /proc/meminfo kernel-format variants -------
+    {
+        qint64 available = 0;
+        qint64 total = 0;
+        const QString sample =
+            "MemTotal:        2000000 kB\n"
+            "MemFree:          300000 kB\n"
+            "MemAvailable:     800000 kB\n"
+            "Buffers:           50000 kB\n";
+        check(Platform::parseMemInfo(sample, &available, &total)
+                  && available == 800000LL * 1024 && total == 2000000LL * 1024,
+              "parseMemInfo prefers MemAvailable over MemFree when both are present");
+    }
+    {
+        qint64 available = 0;
+        qint64 total = 0;
+        const QString sample = "MemTotal:        2000000 kB\nMemFree:          300000 kB\n";
+        check(Platform::parseMemInfo(sample, &available, &total)
+                  && available == 300000LL * 1024 && total == 2000000LL * 1024,
+              "parseMemInfo falls back to MemFree when MemAvailable is absent");
+    }
+    {
+        qint64 available = 0;
+        qint64 total = 0;
+        check(!Platform::parseMemInfo("garbage, no colons here", &available, &total),
+              "parseMemInfo returns false rather than guessing on unrecognized content");
+    }
+
+    // --- isResourceLow: boundary values around both thresholds --------------
+    {
+        Platform::SystemResources low;
+        low.valid = true;
+        low.availableRamBytes = 32LL * 1024 * 1024;   // below the 64MB floor
+        low.availableDiskBytes = 100LL * 1024 * 1024;
+        check(Platform::isResourceLow(low), "isResourceLow fires on low RAM alone");
+    }
+    {
+        Platform::SystemResources low;
+        low.valid = true;
+        low.availableRamBytes = 500LL * 1024 * 1024;
+        low.availableDiskBytes = 5LL * 1024 * 1024;   // below the 20MB floor
+        check(Platform::isResourceLow(low), "isResourceLow fires on low disk alone");
+    }
+    {
+        Platform::SystemResources ok;
+        ok.valid = true;
+        ok.availableRamBytes = 500LL * 1024 * 1024;
+        ok.availableDiskBytes = 100LL * 1024 * 1024;
+        check(!Platform::isResourceLow(ok), "isResourceLow stays quiet when both are healthy");
+    }
+    {
+        Platform::SystemResources invalid;
+        invalid.valid = false;
+        invalid.availableRamBytes = 0;
+        check(!Platform::isResourceLow(invalid),
+              "isResourceLow does not fire when the underlying query itself failed");
+    }
+
+    // --- parseCpuInfo: the real-world /proc/cpuinfo format variants ---------
+    check(Platform::parseCpuInfo("Hardware\t: Rockchip RK3568\nRevision\t: 0000\n")
+              == "Rockchip RK3568",
+          "parseCpuInfo prefers a Hardware line (common on ARM SBCs)");
+    check(Platform::parseCpuInfo("Model\t\t: Raspberry Pi 4 Model B Rev 1.2\n")
+              == "Raspberry Pi 4 Model B Rev 1.2",
+          "parseCpuInfo falls back to a Model line");
+    check(Platform::parseCpuInfo(
+              "model name\t: Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz\n")
+              == "Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz",
+          "parseCpuInfo falls back to the x86 model name line");
+    check(Platform::parseCpuInfo("CPU implementer\t: 0x41\nCPU part\t: 0xd08\n")
+              == "unknown (implementer 0x41, part 0xd08)",
+          "parseCpuInfo builds a labeled fallback from numeric codes rather than an empty string");
+
+    const Platform::SystemInfo sysInfo = Platform::querySystemInfo();
+    std::printf("INFO: chip=%s arch=%s os=%s\n",
+                qPrintable(sysInfo.chipName), qPrintable(sysInfo.architecture),
+                qPrintable(sysInfo.osVersion));
+
     // sandbox removes itself, and with it the log.
     return allPassed ? 0 : 1;
 }

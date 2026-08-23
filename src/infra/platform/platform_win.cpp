@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSettings>
+#include <QSysInfo>
 
 #include <windows.h>
 
@@ -61,6 +63,42 @@ bool supportsSelfUpdate() {
 
 void installCrashHandler() {
     SetUnhandledExceptionFilter(crashHandler);
+}
+
+SystemResources checkSystemResources(const QString &logDirectory) {
+    SystemResources result;
+    MEMORYSTATUSEX memStatus;
+    memStatus.dwLength = sizeof(memStatus);
+    if (GlobalMemoryStatusEx(&memStatus)) {
+        result.availableRamBytes = static_cast<qint64>(memStatus.ullAvailPhys);
+        result.totalRamBytes = static_cast<qint64>(memStatus.ullTotalPhys);
+        result.valid = true;
+    }
+    ULARGE_INTEGER freeBytes;
+    ULARGE_INTEGER totalBytes;
+    const QString path = logDirectory.isEmpty() ? QStringLiteral(".") : logDirectory;
+    if (GetDiskFreeSpaceExW(reinterpret_cast<LPCWSTR>(path.utf16()), &freeBytes, &totalBytes,
+                            nullptr)) {
+        result.availableDiskBytes = static_cast<qint64>(freeBytes.QuadPart);
+        result.totalDiskBytes = static_cast<qint64>(totalBytes.QuadPart);
+    } else {
+        result.valid = false;
+    }
+    return result;
+}
+
+SystemInfo querySystemInfo() {
+    SystemInfo info;
+    QSettings cpuKey(
+        QStringLiteral("HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"),
+        QSettings::NativeFormat);
+    info.chipName = cpuKey.value(QStringLiteral("ProcessorNameString")).toString();
+    if (info.chipName.isEmpty()) {
+        info.chipName = QStringLiteral("unknown");
+    }
+    info.architecture = QSysInfo::currentCpuArchitecture();
+    info.osVersion = QSysInfo::prettyProductName();
+    return info;
 }
 
 }  // namespace Platform

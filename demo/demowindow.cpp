@@ -2,12 +2,15 @@
 
 #include "app_log.h"
 #include "app_settings.h"
+#include "platform.h"
 #include "thememanager.h"
 
 #include <QAbstractItemView>
 #include <QAction>
 #include <QComboBox>
 #include <QDialog>
+#include <QFileInfo>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -313,6 +316,8 @@ DemoWindow::DemoWindow() {
         ThemeManager::apply(theme);
         ThemeManager::save(theme);
     });
+    auto *systemInfoAction = viewMenu->addAction("&System Info");
+    connect(systemInfoAction, &QAction::triggered, this, &DemoWindow::showSystemInfo);
 
     statusBar()->showMessage("Log: " + AppLog::filePath());
 
@@ -546,6 +551,32 @@ void DemoWindow::raiseToFront() {
     }
     raise();
     activateWindow();
+}
+
+void DemoWindow::showSystemInfo() {
+    // Queried on demand, not cached from startup -- so the numbers reflect right now, not
+    // whatever they were when the app launched (spec.md D6 of
+    // .plans/2026-08-22-resource-check).
+    const Platform::SystemInfo info = Platform::querySystemInfo();
+    const Platform::SystemResources resources =
+        Platform::checkSystemResources(QFileInfo(AppLog::filePath()).absolutePath());
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("System Info");
+    auto *form = new QFormLayout(&dialog);
+    form->addRow("Chip:", new QLabel(info.chipName));
+    form->addRow("Architecture:", new QLabel(info.architecture));
+    form->addRow("OS:", new QLabel(info.osVersion));
+    form->addRow("RAM:", new QLabel(QString("%1 / %2 MB available")
+        .arg(resources.availableRamBytes / (1024 * 1024))
+        .arg(resources.totalRamBytes / (1024 * 1024))));
+    form->addRow("Disk:", new QLabel(QString("%1 / %2 MB available")
+        .arg(resources.availableDiskBytes / (1024 * 1024))
+        .arg(resources.totalDiskBytes / (1024 * 1024))));
+    auto *closeButton = new QPushButton("Close");
+    form->addRow(closeButton);
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    dialog.exec();
 }
 
 bool DemoWindow::isModbusCoilFunction() const {

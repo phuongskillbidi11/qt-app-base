@@ -45,7 +45,8 @@ target_link_libraries(appcore PUBLIC Qt5::Core)
 
 # --- layer 2: infra --------------------------------------------------------
 # Talks to the operating system: files, settings, sockets, subprocesses. No widgets.
-set(INFRA_PLATFORM_SOURCES src/infra/platform/platform.h)
+set(INFRA_PLATFORM_SOURCES src/infra/platform/platform.h
+    src/infra/platform/platform_common.cpp)
 if(WIN32)
     list(APPEND INFRA_PLATFORM_SOURCES src/infra/platform/platform_win.cpp)
 else()

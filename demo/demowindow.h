@@ -36,6 +36,7 @@ public slots:
     void raiseToFront();
 
 private:
+    void showSystemInfo();
     void updateModbusLabels();
     void rebuildModbusTableRows();
     void updateModbusRegisterTableValues(const QVector<uint16_t> &registers);

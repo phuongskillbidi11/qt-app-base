@@ -5,6 +5,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSysInfo>
+
+#include <sys/statvfs.h>
 
 #include <cerrno>
 #include <cstdio>
@@ -99,6 +102,54 @@ void installCrashHandler() {
     std::signal(SIGABRT, crashHandler);
     std::signal(SIGFPE, crashHandler);
     std::signal(SIGILL, crashHandler);
+}
+
+SystemResources checkSystemResources(const QString &logDirectory) {
+    SystemResources result;
+    QFile meminfo(QStringLiteral("/proc/meminfo"));
+    if (meminfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QString content = QString::fromLocal8Bit(meminfo.readAll());
+        result.valid = parseMemInfo(content, &result.availableRamBytes, &result.totalRamBytes);
+    }
+    struct statvfs stat;
+    const QString path = logDirectory.isEmpty() ? QStringLiteral(".") : logDirectory;
+    if (::statvfs(path.toLocal8Bit().constData(), &stat) == 0) {
+        result.availableDiskBytes = static_cast<qint64>(stat.f_bavail) * stat.f_frsize;
+        result.totalDiskBytes = static_cast<qint64>(stat.f_blocks) * stat.f_frsize;
+    } else {
+        result.valid = false;
+    }
+    return result;
+}
+
+SystemInfo querySystemInfo() {
+    SystemInfo info;
+    // /proc/device-tree/model (when present -- most ARM SBCs booted via device tree) names
+    // the actual board, which is more useful than /proc/cpuinfo's own numeric-only fallback
+    // on boards whose cpuinfo has no Hardware/Model/model name line -- confirmed live on the
+    // real HMI (F3 of .plans/2026-08-22-resource-check): its own /proc/cpuinfo has none of
+    // those, but /proc/device-tree/model reads "Rockchip RK3568 EVB1 DDR4 V10 Board". The
+    // file is a null-terminated C string, not a text line -- trim both whitespace and any
+    // trailing NUL bytes.
+    QFile deviceTreeModel(QStringLiteral("/proc/device-tree/model"));
+    if (deviceTreeModel.open(QIODevice::ReadOnly)) {
+        QString model = QString::fromLocal8Bit(deviceTreeModel.readAll());
+        model = model.remove(QChar(0)).trimmed();
+        if (!model.isEmpty()) {
+            info.chipName = model;
+        }
+    }
+    if (info.chipName.isEmpty()) {
+        QFile cpuinfo(QStringLiteral("/proc/cpuinfo"));
+        if (cpuinfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            info.chipName = parseCpuInfo(QString::fromLocal8Bit(cpuinfo.readAll()));
+        } else {
+            info.chipName = QStringLiteral("unknown");
+        }
+    }
+    info.architecture = QSysInfo::currentCpuArchitecture();
+    info.osVersion = QSysInfo::prettyProductName();
+    return info;
 }
 
 }  // namespace Platform

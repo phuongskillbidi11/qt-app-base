@@ -6,6 +6,7 @@
 #include "demowindow.h"
 
 #include <QApplication>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QSettings>
 
@@ -31,8 +32,10 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext &context,
 // arbitrary:
 //   1. identity first — QSettings and the log path are derived from it
 //   2. log second — so everything after it, including failures, is recorded
-//   3. crash handler third — before any code that could fault
-//   4. single-instance guard fourth — before building any window, so a second launch
+//   3. resource check third — so a resource-starved launch leaves evidence before
+//      anything else has a chance to fail mysteriously because of it
+//   4. crash handler fourth — before any code that could fault
+//   5. single-instance guard fifth — before building any window, so a second launch
 //      costs nothing and cannot fight the first over shared resources
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
@@ -41,6 +44,23 @@ int main(int argc, char *argv[]) {
     QSettings::setDefaultFormat(QSettings::IniFormat);
 
     AppLog::init();
+
+    const Platform::SystemResources resources =
+        Platform::checkSystemResources(QFileInfo(AppLog::filePath()).absolutePath());
+    AppLog::info(QString("system resources: RAM %1/%2 MB available, disk %3/%4 MB available")
+                     .arg(resources.availableRamBytes / (1024 * 1024))
+                     .arg(resources.totalRamBytes / (1024 * 1024))
+                     .arg(resources.availableDiskBytes / (1024 * 1024))
+                     .arg(resources.totalDiskBytes / (1024 * 1024)));
+    if (Platform::isResourceLow(resources)) {
+        AppLog::warn("system resources are low -- see the line above for exact numbers");
+        QMessageBox::warning(nullptr, "Low system resources",
+            QString("Available RAM: %1 MB\nAvailable disk: %2 MB\n\n"
+                    "The application may run slowly or fail to save data.")
+                .arg(resources.availableRamBytes / (1024 * 1024))
+                .arg(resources.availableDiskBytes / (1024 * 1024)));
+    }
+
     qInstallMessageHandler(qtMessageHandler);
     Platform::installCrashHandler();
 
