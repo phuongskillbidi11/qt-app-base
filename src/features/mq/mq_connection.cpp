@@ -123,6 +123,11 @@ void MqConnection::readSocket() {
         if (!connection_) {
             return quint64{0};
         }
-        return connection_->parse(data, static_cast<size_t>(size));
+        // Matches MqBuffer::feed's own quint64(...) contract explicitly -- AMQP::Connection::
+        // parse() returns size_t, which is a distinct type from quint64 on LP64 platforms
+        // (Linux/GCC) even though both are 64-bit, unlike on Windows/MSVC's LLP64 where they
+        // coincide. Without this cast, GCC rejects the lambda for having two return
+        // statements that deduce different types.
+        return static_cast<quint64>(connection_->parse(data, static_cast<size_t>(size)));
     });
 }

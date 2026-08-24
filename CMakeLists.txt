@@ -26,6 +26,7 @@ include(UseBaseFeature)
 enable_testing()
 
 find_package(Qt5 5.15 REQUIRED COMPONENTS Core Network Widgets)
+find_package(Threads REQUIRED)
 
 if(NOT DEFINED APP_VERSION)
     set(APP_VERSION "0.0.0-dev")
@@ -82,7 +83,7 @@ add_library(appinfra STATIC
 target_include_directories(appinfra PUBLIC
     src/infra/log src/infra/db src/infra/settings src/infra/singleinstance
     src/infra/update src/infra/platform)
-target_link_libraries(appinfra PUBLIC Qt5::Core Qt5::Network appcore)
+target_link_libraries(appinfra PUBLIC Qt5::Core Qt5::Network appcore Threads::Threads ${CMAKE_DL_LIBS})
 target_compile_definitions(appinfra PUBLIC APP_VERSION="${APP_VERSION}")
 # Each application supplies its own. Empty here means the base's demo never checks for
 # updates, which is correct — the base has no releases of its own.
