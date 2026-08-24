@@ -134,7 +134,10 @@ query schema lives entirely in those derived fields plus envelope columns.
 
 `qt-mq-lab` is this feature's reference consumer: `use_base_feature(mq UI LINK amqpcpp)`, its
 own submodule supplying the `amqpcpp` target. The base does not vendor AMQP-CPP itself — see
-"Adding a feature the base ships" below for why.
+"Adding a feature the base ships" below for why. The base's own demo *can* also build a
+RabbitMQ tab, opt-in only: `-DBUILD_DEMO_MQ=ON` after `git submodule update --init
+external/AMQP-CPP` (see `.plans/2026-08-23-demo-rabbitmq-tab/spec.md` D1/D2 for why this is a
+deliberate, narrow exception to the no-vendoring rule above, not a reversal of it).
 
 ### `src/features/modbus/` — a second `ProtocolDriver` conformer
 

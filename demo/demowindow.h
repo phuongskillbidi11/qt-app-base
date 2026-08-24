@@ -9,6 +9,14 @@
 #include "update_installer.h"
 #include "worker.h"
 
+#ifdef BUILD_DEMO_MQ
+#include "mq_connection.h"
+#include "mq_service.h"
+#include "mq_settings.h"
+#include "mq_store.h"
+#include "mq_tab.h"
+#endif
+
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -100,4 +108,15 @@ private:
     QLabel *m_c3CountResultLabel = nullptr;
 
     QLabel *m_workerLabel = nullptr;
+
+#ifdef BUILD_DEMO_MQ
+    // See .plans/2026-08-23-demo-rabbitmq-tab/spec.md D1/D6. m_mqConnection must be declared
+    // before m_mqService -- its in-class initializer takes m_mqConnection's address, and
+    // members initialize in declaration order regardless of initializer-list order.
+    MqSettings m_mqSettings;
+    MqConnection m_mqConnection;
+    MqService m_mqService{&m_mqConnection};
+    MqStore m_mqStore;
+    MqTab *m_mqTab = nullptr;
+#endif
 };

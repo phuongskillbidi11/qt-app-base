@@ -13,6 +13,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -76,6 +77,9 @@ DemoWindow::DemoWindow() {
     m_sidebar->addItem("  Real-time Log");
     m_sidebar->addItem("  Control");
     m_sidebar->addItem("  Record Count");
+#ifdef BUILD_DEMO_MQ
+    m_sidebar->addItem("RabbitMQ");
+#endif
     for (int row = 2; row <= 8; ++row) {
         m_sidebar->setRowHidden(row, true);
     }
@@ -295,11 +299,39 @@ DemoWindow::DemoWindow() {
     c3PageLayout->addWidget(m_c3ViewStack);
     m_protocolStack->addWidget(c3Page);
 
+#ifdef BUILD_DEMO_MQ
+    // Page 2 -- RabbitMQ. MqTab is the base's own shipped widget, reused whole (spec.md D1
+    // of .plans/2026-08-23-demo-rabbitmq-tab) -- no new UI is designed here. The presenter
+    // is deliberately generic (D4): the demo has no card-domain schema of its own to
+    // interpret a payload with, so it shows the envelope's raw type and a compact rendering
+    // of the JSON body, which is enough to prove routing/ack/reject/mandatory+recall() all
+    // work end to end.
+    const MessagePresenter mqPresenter = [](const QString &type, const QJsonObject &payload) {
+        const QString compact = QString::fromUtf8(
+            QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        return PresentedMessage{type, compact, compact};
+    };
+    m_mqTab = new MqTab(&m_mqConnection, &m_mqService, &m_mqSettings, &m_mqStore, mqPresenter,
+                        m_mqSettings.host(), m_mqSettings.port(), m_mqSettings.vhost());
+    m_protocolStack->addWidget(m_mqTab);
+#endif
+
     navRowLayout->addWidget(m_protocolStack);
     layout->addWidget(navRow);
 
     connect(m_sidebar, &QListWidget::currentRowChanged,
             this, &DemoWindow::onSidebarRowChanged);
+
+#ifdef BUILD_DEMO_MQ
+    connect(&m_mqService, &MqService::errorOccurred, this, [this](const QString &message) {
+        if (m_mqTab) {
+            m_mqTab->setConnectionError(message);
+        }
+    });
+    m_mqConnection.connectToHost(m_mqSettings.host(), m_mqSettings.port(),
+                                 m_mqSettings.vhost(), m_mqSettings.user(),
+                                 m_mqSettings.password());
+#endif
 
     layout->addSpacing(12);
     layout->addWidget(btnBlock);
@@ -917,6 +949,17 @@ void DemoWindow::onSidebarRowChanged(int row) {
         });
         return;
     }
+#ifdef BUILD_DEMO_MQ
+    if (row == 9) {
+        // RabbitMQ -- one page, no sub-view tree, mirrors row 0's pattern (spec.md D5 of
+        // .plans/2026-08-23-demo-rabbitmq-tab).
+        m_protocolStack->setCurrentIndex(2);
+        for (int r = 2; r <= 8; ++r) {
+            m_sidebar->setRowHidden(r, true);
+        }
+        return;
+    }
+#endif
 
     // One of the 7 C3 sub-view rows.
     const int index = row - 2;

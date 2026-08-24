@@ -31,6 +31,12 @@ if(NOT DEFINED APP_VERSION)
     set(APP_VERSION "0.0.0-dev")
 endif()
 
+# OFF by default so a plain `git clone && cmake --build .` never needs external/AMQP-CPP --
+# only a maintainer who explicitly wants the demo's RabbitMQ tab initializes that submodule
+# and passes -DBUILD_DEMO_MQ=ON. See .plans/2026-08-23-demo-rabbitmq-tab/spec.md D1/D2.
+option(BUILD_DEMO_MQ
+    "Also build the mq feature's RabbitMQ tab into the demo (needs external/AMQP-CPP)" OFF)
+
 # --- layer 1: core ---------------------------------------------------------
 # Pure logic and the threading boundary. Links Qt5::Core ONLY — that is what makes the
 # layering real: a #include <QWidget> in here is a compile error, not a review comment.
@@ -113,6 +119,21 @@ add_test(NAME ui COMMAND ui_selftest)
 if(BUILD_DEMO)
     add_feature_module(modbus)
     add_feature_module(c3protocol)
+    if(BUILD_DEMO_MQ)
+        add_subdirectory(external/AMQP-CPP)
+        if(WIN32)
+            # Same fix qt-mq-lab's own top-level CMakeLists.txt already carries -- AMQP-CPP's
+            # message.h calls std::numeric_limits<...>::max()-shaped expressions that collide
+            # with <windows.h>'s max/min macros once anything pulls windows.h in transitively.
+            # Scoped to this target only, not applied base-wide.
+            target_compile_definitions(amqpcpp PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+        endif()
+        add_feature_module(mq UI LINK amqpcpp)
+    endif()
     add_executable(basedemo WIN32 demo/main.cpp demo/demowindow.cpp demo/demowindow.h)
     target_link_libraries(basedemo PRIVATE appui appinfra appcore feature_modbus feature_c3protocol)
+    if(BUILD_DEMO_MQ)
+        target_link_libraries(basedemo PRIVATE feature_mq)
+        target_compile_definitions(basedemo PRIVATE BUILD_DEMO_MQ)
+    endif()
 endif()
